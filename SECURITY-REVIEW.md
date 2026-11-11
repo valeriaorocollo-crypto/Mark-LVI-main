@@ -31,7 +31,7 @@ aprobadas por la matriz general.
 
 | Prioridad | Superficie | Estado | Riesgo residual |
 |---|---|---|---|
-| P0 | Política de efectos y confirmación | Se añadió un contrato de efectos por acción; los efectos desconocidos, entradas de teclado/ratón opacas y controles sin alcance verificable fallan cerrados. Se exige confirmación para escritura/invocación UIA sin depender de etiquetas, y se gatean registries de acciones/plugins, planes y handlers directos. La suite focal y completa pasa localmente en Python 3.11/3.12/3.13. | La CI remota de esta revisión aún debe pasar. Pruebas sintéticas no prueban cada semántica de aplicación real; acciones deliberadamente opacas quedan bloqueadas, no habilitadas por confirmación genérica. |
+| P0 | Política de efectos y confirmación | Se añadió un contrato de efectos por acción; los efectos desconocidos, entradas de teclado/ratón opacas y controles sin alcance verificable fallan cerrados. Se exige confirmación para escritura/invocación UIA sin depender de etiquetas, y se gatean registries de acciones/plugins, planes y handlers directos. La suite completa pasa localmente y la matriz remota [run 42951554253](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42951554253) pasa en Python 3.11/3.12/3.13. | Pruebas sintéticas no prueban cada semántica de aplicación real; acciones deliberadamente opacas quedan bloqueadas, no habilitadas por confirmación genérica. |
 | P0/P1 | Copia, escritura y undo en [file_controller.py](./actions/file_controller.py) | Se corrigieron sobrescrituras y undo destructivo reproducidos; pruebas inyectan fallos de `fsync`, reemplazo, lectura y restauración. ACL NTFS denegada, escritura/undo en medio removible y SMB UNC, ENOSPC real en un VHDX temporal y cancelación real en el HUD pasaron; original y recursos temporales quedaron correctamente preservados/limpiados. | La evidencia cubre escenarios acotados, no toda combinación de ACL, volumen y fallo del sistema. |
 | P1 | Mensajería | En [send_message.py](./actions/send_message.py), plataformas sin transporte verificado fallan antes de escribir/enviar. El driver UIA acepta resultados cuyo nombre exacto va seguido de metadatos, vuelve a comprobar el encabezado real y ahora intenta recuperar el foco de forma acotada antes de releer controles. El chat “Mi Princesa” se abrió y el encabezado coincidió. Las 19 pruebas del driver pasan en Python 3.11, 3.12 y 3.13. | El HUD mostró el destinatario y texto autorizados. Un intento informó `status=failed`; el último informó `status=unverified`. Una consulta UIA no encontró el texto, pero el usuario indicó que sí se envió. No puede afirmarse entrega ni resultado visual; no se reintentó tras el estado ambiguo. |
 | P1 | Steam | En [game_updater.py](./actions/game_updater.py), se retiraron los clics heurísticos y la automatización del diálogo de instalación. Sesión real detectada y diálogo real de instalación abierto; la selección final queda a cargo de la persona. | No se completó ni verificó la instalación; no se probó compra ni se debe automatizarla. |
@@ -68,10 +68,8 @@ capacidad concreta y limitada. Ninguno es un sandbox ni un permiso global.
 
 ## Acciones requeridas antes de declarar P0/P1 cerrados para este alcance
 
-1. La Etapa 0 ya pasó la matriz remota en el run 42948215095. Tras incorporar
-   los cambios de política de esta revisión, repetir la matriz completa en
-   GitHub Actions y conservar los artefactos por intérprete antes de declarar
-   la Etapa 1 cerrada.
+1. Etapas 0 y 1: matrices remotas aprobadas en los runs 42948215095 y
+   42951554253, respectivamente; conservar los artefactos por intérprete.
 2. WhatsApp: el encabezado “Mi Princesa” se verificó tras corregir el driver,
    y el usuario lo identificó como el contacto autorizado para
    `+51 988 681 776`. La sesión nueva cargó la recuperación de foco y mostró el
