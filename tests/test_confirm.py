@@ -1,5 +1,6 @@
 from __future__ import annotations
 
+import asyncio
 import threading
 import unittest
 from unittest.mock import patch
@@ -84,6 +85,46 @@ class ConfirmationGateTests(unittest.TestCase):
         self.assertFalse(ran.wait(0.1))
         self.assertEqual(confirm.pending_title(), "")
 
+    def test_async_request_sets_cancellation_event_when_denied(self) -> None:
+        confirm.bind(lambda _title, _detail: None, lambda: None)
+        cancelled = threading.Event()
+
+        async def request_then_deny() -> str:
+            request = asyncio.create_task(confirm.request_async(
+                "visual-capture",
+                "Share a screen capture?",
+                "Synthetic details",
+                lambda: "status=done",
+                cancel_event=cancelled,
+            ))
+            await asyncio.sleep(0)
+            confirm.resolve(confirm.ConfirmationDecision.CANCEL)
+            return await request
+
+        result = asyncio.run(request_then_deny())
+
+        self.assertIn("status=failed", result)
+        self.assertTrue(cancelled.is_set())
+
+    def test_async_request_timeout_sets_cancellation_event(self) -> None:
+        confirm.bind(lambda _title, _detail: None, lambda: None)
+        cancelled = threading.Event()
+        ran = threading.Event()
+
+        with patch.object(confirm.asyncio, "wait_for", side_effect=asyncio.TimeoutError):
+            result = asyncio.run(confirm.request_async(
+                "visual-capture",
+                "Share a screen capture?",
+                "Synthetic details",
+                lambda: ran.set() or "status=done",
+                cancel_event=cancelled,
+            ))
+
+        self.assertIn("status=failed", result)
+        self.assertTrue(cancelled.is_set())
+        self.assertFalse(ran.is_set())
+        self.assertEqual(confirm.pending_title(), "")
+
     def test_confirm_runs_action_once_off_the_calling_thread(self) -> None:
         ran = threading.Event()
         worker_threads: list[str] = []
@@ -136,7 +177,7 @@ class ConfirmationGateTests(unittest.TestCase):
         self.assertEqual(created, [])
         self.assertFalse(completed.is_set())
 
-        confirm.resolve("grant")
+        confirm.resolve(confirm.ConfirmationDecision.REMEMBER_30_DAYS)
 
         self.assertTrue(completed.wait(2))
         self.assertEqual(created, ["screen"])
@@ -158,6 +199,24 @@ class ConfirmationGateTests(unittest.TestCase):
         self.assertFalse(ran.wait(0.1))
         self.assertEqual(confirm.pending_title(), "Confirm this operation")
         confirm.resolve(False)
+
+    def test_string_grant_decision_cannot_create_a_permission(self) -> None:
+        created: list[bool] = []
+        confirm.bind(lambda _title, _detail: None, lambda: None)
+        confirm.request(
+            "typed-grant",
+            "Confirm this operation",
+            "The reusable permission requires the typed HUD decision.",
+            lambda: "done",
+            grant_action=lambda: created.append(True),
+            grant_label="Test permission",
+        )
+
+        confirm.resolve("grant")
+
+        self.assertEqual(created, [])
+        self.assertEqual(confirm.pending_title(), "Confirm this operation")
+        confirm.resolve(confirm.ConfirmationDecision.CANCEL)
 
     def test_string_cancel_decision_never_runs_the_action(self) -> None:
         ran = threading.Event()

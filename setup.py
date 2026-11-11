@@ -19,6 +19,7 @@ from pathlib import Path
 
 OS = platform.system()  # "Windows" | "Darwin" | "Linux"
 HERE = Path(__file__).resolve().parent
+REQUIREMENTS_DIR = HERE / "requirements"
 
 MIN_PY = (3, 11)        # hard floor: below this the syntax used here won't parse
 MAX_PY = (3, 13)        # highest version this is actually tested on
@@ -27,6 +28,12 @@ OPTIONAL_GROUPS = {
     "documents": "requirements-optional-documents.txt",
     "local-voice": "requirements-optional-local-voice.txt",
 }
+REQUIRED_MANIFESTS = (
+    "requirements.txt",
+    "requirements-base.txt",
+    "requirements-optional.txt",
+    *OPTIONAL_GROUPS.values(),
+)
 
 
 def _run(label: str, args: list[str]) -> None:
@@ -110,13 +117,11 @@ def _check_assets() -> bool:
 
 def _check_manifests() -> None:
     """Verify that the clean-copy installation inputs are present."""
-    required = (
-        "requirements.txt",
-        "requirements-base.txt",
-        "requirements-optional.txt",
-        *OPTIONAL_GROUPS.values(),
-    )
-    missing = [name for name in required if not (HERE / name).is_file()]
+    missing = [
+        f"requirements\\{name}"
+        for name in REQUIRED_MANIFESTS
+        if not (REQUIREMENTS_DIR / name).is_file()
+    ]
     if missing:
         raise SystemExit(
             "[X] Installation manifests missing: " + ", ".join(missing)
@@ -125,19 +130,19 @@ def _check_manifests() -> None:
 
 def _show_plan() -> None:
     """Print the installation and network plan without changing the system."""
-    def show_manifest(path: Path, indent: str) -> None:
-        for line in path.read_text(encoding="utf-8").splitlines():
+    def show_manifest(path: str, indent: str) -> None:
+        for line in (REQUIREMENTS_DIR / path).read_text(encoding="utf-8").splitlines():
             requirement = line.strip()
             if requirement and not requirement.startswith("#") and not requirement.startswith("-r "):
                 print(f"{indent}{requirement}")
 
     print("\nMARK setup plan (no changes will be made)")
     print("  Base packages (requirements-base.txt):")
-    show_manifest(HERE / "requirements-base.txt", "    - ")
+    show_manifest("requirements-base.txt", "    - ")
     print("  Optional groups (not selected; explicit install required):")
     for group, manifest in OPTIONAL_GROUPS.items():
         print(f"    {group} ({manifest}):")
-        show_manifest(HERE / manifest, "      - ")
+        show_manifest(manifest, "      - ")
     print("  Python package source: pip configuration")
     print("  Network: package downloads only if setup is run normally;")
     print("           optional groups are installed only when selected and confirmed")
@@ -204,13 +209,14 @@ def main() -> None:
     # requirements.txt includes only the base set; optional integrations remain
     # opt-in and are documented in requirements-optional.txt.
     _run("Installing Python dependencies (OS-specific extras auto-filtered)...",
-         [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
+         [sys.executable, "-m", "pip", "install", "-r",
+          str(REQUIREMENTS_DIR / "requirements.txt")])
 
     for group in optional_groups:
         _run(
             f"Installing optional group: {group}",
             [sys.executable, "-m", "pip", "install", "-r",
-             str(HERE / OPTIONAL_GROUPS[group])],
+             str(REQUIREMENTS_DIR / OPTIONAL_GROUPS[group])],
         )
 
     # Chromium covers Chrome/Edge/Opera/Brave/Vivaldi; Firefox for Firefox.

@@ -615,6 +615,7 @@ class JarvisLive:
         self._speaking_lock       = threading.Lock()
         self._phone_active        = False   # True while phone mic is streaming; pauses PC mic
         self._pending_vision       = None    # (img_bytes, mime_type, question, angle) to inject after tool response
+        self._pending_vision_activity = None
         self._vision_cam_active    = False   # True if camera was opened for vision → auto-close after response
         self._vision_close_pending = False   # True after vision injected; next turn_complete closes camera
         self._vision_last_time     = 0.0     # monotonic time of last screen_process call (cooldown guard)
@@ -1475,31 +1476,165 @@ class JarvisLive:
                     print(f"[Vision] ⏳ Cooldown active ({_wait:.1f}s remaining) — ignoring duplicate call")
                     result = "Vision is still processing the previous request. I will not call this again."
                 else:
-                    self._vision_busy      = True
-                    self._vision_last_time = _now
                     angle = raw_angle.strip().lower()
-                    if angle == "camera":
-                        img_b, mime_t = await loop.run_in_executor(None, _capture_camera)
-                        self.ui.start_camera_stream()
-                        self._vision_cam_active = True
-                        print(f"[Vision] 📷 Camera: {len(img_b):,} bytes")
-                        _stall = "camera"
+                    self._vision_busy = True
+                    self._vision_last_time = _now
+                    captured: dict[str, object] = {}
+                    capture_cancelled = threading.Event()
+
+                    def _capture_after_consent() -> str:
+                        if capture_cancelled.is_set():
+                            return outcome.failed(
+                                "screen_process",
+                                "capture was cancelled before it started",
+                            )
+                        begin = getattr(self.ui, "begin_capture_activity", None)
+                        end = getattr(self.ui, "end_capture_activity", None)
+                        if not callable(begin) or not callable(end):
+                            return outcome.failed(
+                                "screen_process",
+                                "the capture indicator is unavailable; no image was captured",
+                            )
+                        source = (
+                            "Webcam frame to Gemini"
+                            if angle == "camera"
+                            else "Full-screen capture to Gemini"
+                        )
+                        token = begin(source)
+                        if token is None:
+                            return outcome.failed(
+                                "screen_process",
+                                "capture was cancelled or its indicator could not be shown",
+                            )
+                        try:
+                            if token.is_set() or capture_cancelled.is_set():
+                                return outcome.failed(
+                                    "screen_process",
+                                    "capture was stopped before the image was read",
+                                )
+                            capture = (
+                                _capture_camera
+                                if angle == "camera" else _capture_screen
+                            )
+                            img_b, mime_t = capture()
+                            if token.is_set() or capture_cancelled.is_set():
+                                return outcome.failed(
+                                    "screen_process",
+                                    "capture was stopped before upload; no image was sent",
+                                )
+                            if token.is_set() or capture_cancelled.is_set():
+                                return outcome.failed(
+                                    "screen_process",
+                                    "capture was stopped before upload; no image was sent",
+                                )
+                            if angle == "camera":
+                                self.ui.start_camera_stream()
+                            captured["frame"] = (img_b, mime_t, token)
+                            return outcome.done(
+                                "screen_process",
+                                action=angle,
+                                verified=True,
+                            )
+                        except Exception as error:
+                            return outcome.failed(
+                                "screen_process",
+                                "the approved visual capture failed",
+                                action=angle,
+                                error=type(error).__name__,
+                            )
+                        finally:
+                            if "frame" not in captured:
+                                end(token)
+
+                    permission_scope = None
+                    permission_label = ""
+                    if angle == "screen":
+                        from core import session_grants
+
+                        try:
+                            permission_scope = session_grants.scope_for(
+                                "capture_screen", user_text
+                            )
+                            permission_label = session_grants.permission_label(
+                                "capture_screen", user_text
+                            )
+                            permission_allowed = session_grants.allows(
+                                permission_scope
+                            )
+                        except (ValueError, session_grants.GrantStoreError) as error:
+                            result = outcome.failed(
+                                "screen_process",
+                                "the local screen permission could not be "
+                                "validated; no image was captured",
+                                error=type(error).__name__,
+                            )
+                            self._vision_busy = False
+                            permission_allowed = False
+                            permission_scope = None
                     else:
-                        img_b, mime_t = await loop.run_in_executor(None, _capture_screen)
-                        print(f"[Vision] 🖥️  Screen: {len(img_b):,} bytes")
-                        _stall = "screen"
-                    self._pending_vision = (img_b, mime_t, user_text, angle)
-                    # The image is attached to this same exchange, so there is
-                    # nothing to stall for and nothing to announce. Asking for an
-                    # acknowledgement here is what produced two spoken answers —
-                    # the model filled that turn by answering the question from
-                    # imagination, then answered it again once it could see.
-                    result = (
-                        f"[VISION_ACTIVE] {_stall.capitalize()} captured and attached to this "
-                        f"same exchange. Do not acknowledge and do not answer yet — the image "
-                        f"is arriving with this result. Reply once, from what you actually see "
-                        f"in it."
-                    )
+                        permission_allowed = False
+
+                    if result == "Done.":
+                        if permission_allowed:
+                            result = await loop.run_in_executor(
+                                None, _capture_after_consent
+                            )
+                        else:
+                            grant_action = None
+                            grant_label = ""
+                            if permission_scope is not None:
+                                from core import session_grants
+
+                                grant_action = lambda: session_grants.create(
+                                    permission_scope, permission_label
+                                )
+                                grant_label = permission_label
+                            detail = (
+                                f"Source: {('webcam' if angle == 'camera' else 'full screen')}\n"
+                                "Destination: Gemini\n"
+                                "The image is captured only after your approval, "
+                                "shown by an active HUD indicator, and not saved "
+                                "by this operation.\n"
+                                f"Task: {user_text}"
+                            )
+                            result = await confirm_gate.request_async(
+                                key="screen-process",
+                                title=(
+                                    "Share a webcam frame with Gemini?"
+                                    if angle == "camera"
+                                    else "Share the full screen with Gemini?"
+                                ),
+                                detail=detail,
+                                run=_capture_after_consent,
+                                grant_action=grant_action,
+                                grant_label=grant_label,
+                                cancel_event=capture_cancelled,
+                            )
+
+                    frame_info = captured.get("frame")
+                    if (
+                        frame_info is not None
+                        and tool_audit.classify_status(result) == outcome.DONE
+                    ):
+                        img_b, mime_t, token = frame_info
+                        self._pending_vision = (
+                            img_b, mime_t, user_text, angle
+                        )
+                        self._pending_vision_activity = token
+                        self._vision_cam_active = angle == "camera"
+                        print(
+                            f"[Vision] Captured authorized {angle} image "
+                            f"({len(img_b):,} bytes)"
+                        )
+                        # The image is attached to this same exchange. The
+                        # confirmation flow cannot let the model answer first.
+                        result = (
+                            f"[VISION_ACTIVE] {angle.capitalize()} capture is "
+                            "ready for this exchange. Do not acknowledge or "
+                            "answer yet; reply once after inspecting the image."
+                        )
+                    else:
+                        self._vision_busy = False
 
             elif name == "close_camera":
                 self.ui.stop_camera_stream()
@@ -1849,12 +1984,45 @@ class JarvisLive:
         Sending it here means the model has the tool result and the image before
         it generates anything, so the user gets one answer, sooner.
         """
-        if not (self._pending_vision and self.session):
+        if not self._pending_vision:
+            return False
+
+        if self.session is None:
+            pending = self._pending_vision
+            token = self._pending_vision_activity
+            self._pending_vision = None
+            self._pending_vision_activity = None
+            if token is not None:
+                self.ui.end_capture_activity(token)
+            if pending[3] == "camera":
+                self.ui.stop_camera_stream()
+            self._vision_cam_active = False
+            self._vision_close_pending = False
+            self._vision_busy = False
+            print("[Vision] Discarded an authorized frame because the session ended.")
             return False
 
         import base64 as _b64
         img_b, mime_t, question, angle = self._pending_vision
+        token = self._pending_vision_activity
         self._pending_vision = None
+        self._pending_vision_activity = None
+        if token is None:
+            self._vision_busy = False
+            if angle == "camera":
+                self.ui.stop_camera_stream()
+                self._vision_cam_active = False
+            print("[Vision] Refused upload because no capture indicator was active.")
+            return False
+        if token.is_set():
+            self.ui.end_capture_activity(token)
+            if angle == "camera":
+                self.ui.stop_camera_stream()
+                self._vision_cam_active = False
+            self._vision_busy = False
+            print("[Vision] Capture stopped before upload; no image was sent.")
+            return False
+
         b64 = _b64.b64encode(img_b).decode("ascii")
         print(f"[Vision] 📤 {len(img_b):,} bytes (angle={angle}) → main session")
 
@@ -1864,13 +2032,30 @@ class JarvisLive:
         # label *means* is explained once, in the generated [SELF] block.
         src = ("[IMAGE SOURCE: WEBCAM]" if angle == "camera"
                else "[IMAGE SOURCE: SCREEN CAPTURE]")
-        await self.session.send_client_content(
-            turns={"role": "user", "parts": [
-                {"inline_data": {"mime_type": mime_t, "data": b64}},
-                {"text": f"{src}\n\n{question}"},
-            ]},
-            turn_complete=True,
-        )
+        try:
+            if not self.ui.mark_capture_transmitting(token) or token.is_set():
+                if angle == "camera":
+                    self.ui.stop_camera_stream()
+                    self._vision_cam_active = False
+                self._vision_busy = False
+                print("[Vision] Capture stopped before upload; no image was sent.")
+                return False
+            await self.session.send_client_content(
+                turns={"role": "user", "parts": [
+                    {"inline_data": {"mime_type": mime_t, "data": b64}},
+                    {"text": f"{src}\n\n{question}"},
+                ]},
+                turn_complete=True,
+            )
+        except Exception:
+            if angle == "camera":
+                self.ui.stop_camera_stream()
+                self._vision_cam_active = False
+            self._vision_close_pending = False
+            self._vision_busy = False
+            raise
+        finally:
+            self.ui.end_capture_activity(token)
 
         if self._vision_cam_active:
             # Camera: stay busy until JARVIS has finished speaking the answer,
@@ -2729,6 +2914,13 @@ class JarvisLive:
                     self._rx_deadline     = None
 
                     # Reset transient state that must not carry over from a previous session
+                    if self._pending_vision_activity is not None:
+                        self.ui.end_capture_activity(
+                            self._pending_vision_activity
+                        )
+                        self._pending_vision_activity = None
+                    if self._vision_cam_active or self._vision_close_pending:
+                        self.ui.stop_camera_stream()
                     self._pending_vision       = None
                     self._vision_cam_active    = False
                     self._vision_close_pending = False

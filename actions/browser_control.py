@@ -1427,14 +1427,94 @@ class _BrowserSession:
             return "Tab closed."
         return "No active tab to close."
 
-    async def screenshot(self, path: str = None) -> str:
-        page = await self._get_page()
+    async def screenshot(self, path: str = None, player=None) -> str:
+        if path is not None and not isinstance(path, str):
+            return outcome.failed(
+                "browser_control",
+                "the browser screenshot destination must be text",
+                action="screenshot",
+            )
         try:
-            save_path = path or str(Path.home() / "Desktop" / "jarvis_screenshot.png")
-            await page.screenshot(path=save_path, full_page=False)
-            return f"Screenshot saved: {save_path}"
-        except Exception as e:
-            return f"Screenshot error: {e}"
+            save_path = Path(
+                path or Path.home() / "Desktop" / "jarvis_screenshot.png"
+            ).expanduser().resolve()
+        except (OSError, RuntimeError, ValueError) as error:
+            return outcome.failed(
+                "browser_control",
+                "the browser screenshot destination is invalid",
+                action="screenshot",
+                error=type(error).__name__,
+            )
+        page = await self._get_page()
+        begin_activity = getattr(player, "begin_capture_activity", None)
+        end_activity = getattr(player, "end_capture_activity", None)
+        if not callable(begin_activity) or not callable(end_activity):
+            return outcome.failed(
+                "browser_control",
+                "the browser-capture indicator is unavailable; no image was captured",
+                action="screenshot",
+            )
+        stopped = begin_activity(
+            f"Active browser page capture; saved locally to {save_path}; "
+            "not sent to a provider."
+        )
+        if stopped is None:
+            return outcome.failed(
+                "browser_control",
+                "browser capture was cancelled or its indicator could not be shown",
+                action="screenshot",
+            )
+
+        result = outcome.failed(
+            "browser_control",
+            "the browser screenshot could not be saved",
+            action="screenshot",
+        )
+        indicator_error: Exception | None = None
+        try:
+            if stopped.is_set():
+                result = outcome.failed(
+                    "browser_control",
+                    "browser capture was stopped before the page was read",
+                    action="screenshot",
+                )
+            else:
+                image_bytes = await page.screenshot(full_page=False)
+                if stopped.is_set():
+                    result = outcome.failed(
+                        "browser_control",
+                        "browser capture was stopped before the image was saved",
+                        action="screenshot",
+                    )
+                else:
+                    save_path.parent.mkdir(parents=True, exist_ok=True)
+                    save_path.write_bytes(image_bytes)
+                    result = outcome.done(
+                        "browser_control",
+                        action="screenshot",
+                        path=save_path,
+                        verified=True,
+                    )
+        except Exception as error:
+            result = outcome.failed(
+                "browser_control",
+                f"the browser screenshot failed with {type(error).__name__}",
+                action="screenshot",
+            )
+        finally:
+            try:
+                end_activity(stopped)
+            except Exception as error:
+                indicator_error = error
+
+        if indicator_error is not None:
+            return outcome.unverified(
+                "browser_control",
+                "the browser capture indicator could not be removed",
+                action="screenshot",
+                error=type(indicator_error).__name__,
+            )
+        return result
 
     async def back(self) -> str:
         page = await self._get_page()
@@ -1720,7 +1800,7 @@ def _browser_control_impl(
         elif action == "close_tab":
             result = sess.run(sess.close_tab())
         elif action == "screenshot":
-            result = sess.run(sess.screenshot(params.get("path")))
+            result = sess.run(sess.screenshot(params.get("path"), player=player))
         elif action == "back":
             result = sess.run(sess.back())
         elif action == "forward":

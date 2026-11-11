@@ -1,7 +1,11 @@
 from __future__ import annotations
 
+import asyncio
 import threading
+import tempfile
 import unittest
+from pathlib import Path
+from types import SimpleNamespace
 from unittest.mock import patch
 
 from actions import browser_control, computer_control
@@ -10,6 +14,15 @@ from core import action_policy, confirm, session_grants
 
 class ActionPolicyTests(unittest.TestCase):
     def setUp(self) -> None:
+        self._grant_store_dir = tempfile.TemporaryDirectory()
+        self.addCleanup(self._grant_store_dir.cleanup)
+        patcher = patch.object(
+            session_grants,
+            "GRANT_STORE_PATH",
+            Path(self._grant_store_dir.name) / "permissions.json",
+        )
+        patcher.start()
+        self.addCleanup(patcher.stop)
         session_grants.revoke_all()
         with confirm._lock:
             confirm._pending = None
@@ -38,6 +51,141 @@ class ActionPolicyTests(unittest.TestCase):
         self.assertFalse(action_policy.requires_confirmation(
             "computer_control", "unknown_action"
         ))
+
+    def test_screenshot_requires_confirmation_and_describes_local_destination(self) -> None:
+        ran = threading.Event()
+        result = action_policy.dispatch(
+            "computer_control",
+            {"action": "screenshot", "path": "C:\\Users\\Synthetic\\screen.png"},
+            lambda: ran.set() or "status=done action=screenshot",
+        )
+
+        self.assertIn("[CONFIRMATION_PENDING]", result)
+        self.assertFalse(ran.is_set())
+        self.assertIn("Source: full active screen", self.prompts[0][1])
+        self.assertIn("Destination: local file", self.prompts[0][1])
+        self.assertIn("does not send it to a provider", self.prompts[0][1])
+
+    def test_screenshot_shows_indicator_before_capture_and_honors_stop(self) -> None:
+        events: list[str] = []
+        image = SimpleNamespace(
+            save=lambda path: events.append(f"save:{path}")
+        )
+        fake_pyautogui = SimpleNamespace(
+            screenshot=lambda: events.append("capture") or image
+        )
+
+        class CaptureUI:
+            def __init__(self, *, stopped: bool = False) -> None:
+                self.stopped = threading.Event()
+                if stopped:
+                    self.stopped.set()
+
+            def begin_capture_activity(self, source: str) -> threading.Event:
+                events.append(f"indicator:{source}")
+                return self.stopped
+
+            def end_capture_activity(self, token: threading.Event) -> None:
+                events.append("cleanup")
+
+        with (
+            patch.object(computer_control, "_require_pyautogui"),
+            patch.object(
+                computer_control, "_safe_screenshot_path", return_value=Path("screen.png")
+            ),
+            patch.object(computer_control, "pyautogui", fake_pyautogui),
+        ):
+            result = computer_control._screenshot("screen.png", player=CaptureUI())
+
+        self.assertIn("status=done", result)
+        self.assertEqual(
+            [event.split(":", 1)[0] for event in events],
+            ["indicator", "capture", "save", "cleanup"],
+        )
+
+        events.clear()
+        with (
+            patch.object(computer_control, "_require_pyautogui"),
+            patch.object(
+                computer_control, "_safe_screenshot_path", return_value=Path("screen.png")
+            ),
+            patch.object(computer_control, "pyautogui", fake_pyautogui),
+        ):
+            result = computer_control._screenshot(
+                "screen.png", player=CaptureUI(stopped=True)
+            )
+
+        self.assertIn("status=failed", result)
+        self.assertEqual(
+            [event.split(":", 1)[0] for event in events],
+            ["indicator", "cleanup"],
+        )
+
+    def test_browser_screenshot_requires_confirmation_and_describes_page(self) -> None:
+        result = action_policy.dispatch(
+            "browser_control",
+            {"action": "screenshot", "path": "browser-shot.png"},
+            lambda: "status=done action=screenshot",
+        )
+
+        self.assertIn("[CONFIRMATION_PENDING]", result)
+        self.assertIn("Source: the active browser page", self.prompts[0][1])
+        self.assertIn(
+            str(Path("browser-shot.png").resolve()), self.prompts[0][1]
+        )
+        self.assertIn("does not send it to a provider", self.prompts[0][1])
+
+    def test_browser_screenshot_shows_indicator_before_reading_page(self) -> None:
+        events: list[str] = []
+
+        class CaptureUI:
+            def __init__(self, *, stopped: bool = False) -> None:
+                self.token = threading.Event()
+                if stopped:
+                    self.token.set()
+
+            def begin_capture_activity(self, source: str) -> threading.Event:
+                events.append(f"indicator:{source}")
+                return self.token
+
+            def end_capture_activity(self, token: threading.Event) -> None:
+                events.append("cleanup")
+
+        async def take_screenshot(**_kwargs) -> bytes:
+            events.append("capture")
+            return b"synthetic browser image"
+
+        page = SimpleNamespace(screenshot=take_screenshot)
+
+        async def get_page():
+            return page
+
+        session = SimpleNamespace(_get_page=get_page)
+        with tempfile.TemporaryDirectory() as directory:
+            path = Path(directory) / "browser.png"
+            result = asyncio.run(
+                browser_control._BrowserSession.screenshot(
+                    session, str(path), player=CaptureUI()
+                )
+            )
+            self.assertIn("status=done", result)
+            self.assertEqual(path.read_bytes(), b"synthetic browser image")
+            self.assertEqual(
+                [event.split(":", 1)[0] for event in events],
+                ["indicator", "capture", "cleanup"],
+            )
+
+            events.clear()
+            result = asyncio.run(
+                browser_control._BrowserSession.screenshot(
+                    session, str(path), player=CaptureUI(stopped=True)
+                )
+            )
+            self.assertIn("status=failed", result)
+            self.assertEqual(
+                [event.split(":", 1)[0] for event in events],
+                ["indicator", "cleanup"],
+            )
 
     def test_gate_fails_closed_for_an_unclassified_action(self) -> None:
         ran = threading.Event()
@@ -504,8 +652,8 @@ class ActionPolicyTests(unittest.TestCase):
                 (title, detail, label)
             ),
         )
-        scope = session_grants.GrantScope(
-            "share_screen_search", "Gemini", "active_screen"
+        scope = session_grants.scope_for(
+            "share_screen_search", "synthetic blue icon"
         )
         arguments = {
             "action": "screen_find",
@@ -525,7 +673,7 @@ class ActionPolicyTests(unittest.TestCase):
         self.assertFalse(session_grants.allows(scope))
         self.assertEqual(calls, [])
 
-        confirm.resolve("grant")
+        confirm.resolve(confirm.ConfirmationDecision.REMEMBER_30_DAYS)
         self.assertTrue(completed.wait(2))
         self.assertTrue(session_grants.allows(scope))
 

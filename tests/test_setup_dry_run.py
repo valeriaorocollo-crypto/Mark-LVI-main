@@ -49,10 +49,7 @@ class SetupDryRunTests(unittest.TestCase):
     def test_dry_run_fails_when_avatar_asset_is_missing(self) -> None:
         root = Path(__file__).resolve().parent.parent
         manifests = (
-            "requirements.txt",
-            "requirements-base.txt",
-            "requirements-optional.txt",
-            *setup.OPTIONAL_GROUPS.values(),
+            *(str(Path("requirements") / name) for name in setup.REQUIRED_MANIFESTS),
         )
         with tempfile.TemporaryDirectory() as temp_dir:
             clean_copy = Path(temp_dir)

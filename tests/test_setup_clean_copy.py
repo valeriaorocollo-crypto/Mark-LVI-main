@@ -15,10 +15,7 @@ class SetupCleanCopyTests(unittest.TestCase):
         source = Path(__file__).resolve().parent.parent
         setup_inputs = (
             "setup.py",
-            "requirements.txt",
-            "requirements-base.txt",
-            "requirements-optional.txt",
-            *setup.OPTIONAL_GROUPS.values(),
+            *(str(Path("requirements") / name) for name in setup.REQUIRED_MANIFESTS),
             "core/face_model.obj",
         )
         with tempfile.TemporaryDirectory() as temp_dir:

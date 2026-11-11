@@ -214,17 +214,18 @@ _SAFE_SCREENSHOT_ROOTS = (
 
 def _safe_screenshot_path(requested: str | None) -> Path:
     fallback = Path.home() / "Desktop" / "jarvis_screenshot.png"
-    if not requested:
+    if requested is None or requested == "":
         return fallback
+    if not isinstance(requested, str):
+        raise ValueError("screenshot path must be text")
     try:
         p = Path(requested).expanduser().resolve()
-        for root in _SAFE_SCREENSHOT_ROOTS:
-            if p.is_relative_to(root.resolve()):
-                p.parent.mkdir(parents=True, exist_ok=True)
-                return p
-    except Exception:
-        pass
-    return fallback
+    except (OSError, RuntimeError, ValueError) as error:
+        raise ValueError("screenshot path is invalid") from error
+    if not any(p.is_relative_to(root.resolve()) for root in _SAFE_SCREENSHOT_ROOTS):
+        raise ValueError("screenshot path must be inside the user home directory")
+    p.parent.mkdir(parents=True, exist_ok=True)
+    return p
 
 def _require_pyautogui():
     """Refuse early, with the sentence that says what to install.
@@ -423,12 +424,57 @@ def _clipboard_paste(text: str) -> str:
     return "pyperclip not available"
 
 
-def _screenshot(save_path: str | None = None) -> str:
+def _screenshot(save_path: str | None = None, player=None) -> str:
     _require_pyautogui()
-    path = _safe_screenshot_path(save_path)
-    img  = pyautogui.screenshot()
-    img.save(str(path))
-    return f"Screenshot saved: {path}"
+    try:
+        path = _safe_screenshot_path(save_path)
+    except (OSError, ValueError) as error:
+        return outcome.failed(
+            "computer_control",
+            "the screenshot destination is invalid or unavailable",
+            action="screenshot",
+            error=type(error).__name__,
+        )
+    begin_activity = getattr(player, "begin_capture_activity", None)
+    end_activity = getattr(player, "end_capture_activity", None)
+    if not callable(begin_activity) or not callable(end_activity):
+        return outcome.failed(
+            "computer_control",
+            "the screen-capture indicator is unavailable; no image was captured",
+            action="screenshot",
+        )
+    stopped = begin_activity(
+        f"Full-screen capture; saved locally to {path}; not sent to a provider."
+    )
+    if stopped is None:
+        return outcome.failed(
+            "computer_control",
+            "screen capture was cancelled or its indicator could not be shown",
+            action="screenshot",
+        )
+    try:
+        if stopped.is_set():
+            return outcome.failed(
+                "computer_control",
+                "screen capture was stopped before the image was read",
+                action="screenshot",
+            )
+        img = pyautogui.screenshot()
+        if stopped.is_set():
+            return outcome.failed(
+                "computer_control",
+                "screen capture was stopped before the image was saved",
+                action="screenshot",
+            )
+        img.save(str(path))
+        return outcome.done(
+            "computer_control",
+            action="screenshot",
+            path=str(path),
+            verified=True,
+        )
+    finally:
+        end_activity(stopped)
 
 
 def _clear_field() -> str:
@@ -679,7 +725,7 @@ def _close_app(app_name: str, confirmed_index: int | None = None, *,
     )
 
 
-def _screen_find(description: str) -> tuple[int, int] | None:
+def _screen_find(description: str, player=None) -> tuple[int, int] | None | str:
     if not isinstance(description, str) or not description.strip():
         raise ValueError("screen element description is required")
     if len(description) > 500:
@@ -689,7 +735,36 @@ def _screen_find(description: str) -> tuple[int, int] | None:
         print("[ComputerControl] ⚠️ No API key for screen_find")
         return None
 
+    begin_activity = getattr(player, "begin_capture_activity", None)
+    mark_transmitting = getattr(
+        player, "mark_capture_transmitting", None
+    )
+    end_activity = getattr(player, "end_capture_activity", None)
+    if not all(callable(fn) for fn in (
+        begin_activity, mark_transmitting, end_activity
+    )):
+        return outcome.failed(
+            "computer_control",
+            "the screen-capture indicator is unavailable; no image was captured",
+            action="screen_find",
+        )
+    stopped = begin_activity(
+        "Full screen capture for visual search; destination: Gemini."
+    )
+    if stopped is None:
+        return outcome.failed(
+            "computer_control",
+            "screen capture was cancelled or its indicator could not be shown",
+            action="screen_find",
+        )
+
     try:
+        if stopped.is_set():
+            return outcome.failed(
+                "computer_control",
+                "screen capture was stopped before the image was read",
+                action="screen_find",
+            )
         from google import genai
         from google.genai import types as gtypes
 
@@ -699,6 +774,12 @@ def _screen_find(description: str) -> tuple[int, int] | None:
         buf   = io.BytesIO()
         img.save(buf, format="PNG")
         image_bytes = buf.getvalue()
+        if stopped.is_set():
+            return outcome.failed(
+                "computer_control",
+                "screen capture was stopped before upload; no image was sent",
+                action="screen_find",
+            )
 
         prompt = (
             f"This is a screenshot of a {w}×{h} pixel screen. "
@@ -708,12 +789,22 @@ def _screen_find(description: str) -> tuple[int, int] | None:
         )
 
         from core import gemini
+        if not mark_transmitting(stopped) or stopped.is_set():
+            return outcome.failed(
+                "computer_control",
+                "screen capture was stopped before upload; no image was sent",
+                action="screen_find",
+            )
         response = gemini.call(
             [gtypes.Part.from_bytes(data=image_bytes, mime_type="image/png"), prompt],
             tier=gemini.FAST, timeout_ms=20_000,
         )
         if response is None:
-            return None
+            return outcome.unverified(
+                "computer_control",
+                "Gemini did not confirm the visual-search result",
+                action="screen_find",
+            )
 
         text = (response.text or "").strip()
         if "NOT_FOUND" in text.upper():
@@ -724,9 +815,36 @@ def _screen_find(description: str) -> tuple[int, int] | None:
             return int(match.group(1)), int(match.group(2))
 
     except Exception as e:
-        print(f"[ComputerControl] ⚠️ screen_find failed: {e}")
+        print(
+            "[ComputerControl] screen_find failed "
+            f"({type(e).__name__})"
+        )
+        return outcome.failed(
+            "computer_control",
+            "the visual search failed",
+            action="screen_find",
+            error=type(e).__name__,
+        )
+    finally:
+        try:
+            end_activity(stopped)
+        except Exception as error:
+            print(
+                "[ComputerControl] capture indicator cleanup failed "
+                f"({type(error).__name__})"
+            )
+            return outcome.unverified(
+                "computer_control",
+                "the screen-capture indicator could not be removed",
+                action="screen_find",
+                error=type(error).__name__,
+            )
 
-    return None
+    return outcome.failed(
+        "computer_control",
+        "the visual search returned no usable coordinates",
+        action="screen_find",
+    )
 
 
 def _screen_fingerprint(image) -> str:
@@ -747,7 +865,7 @@ def _reserve_screen_click() -> bool:
         return True
 
 
-def _screen_click(description: object, arguments: dict) -> str:
+def _screen_click(description: object, arguments: dict, player=None) -> str:
     if not isinstance(description, str) or not description.strip():
         return outcome.failed(
             "computer_control",
@@ -756,10 +874,13 @@ def _screen_click(description: object, arguments: dict) -> str:
         )
     detail = (
         f"Target: {description[:500]}\n"
-        "After approval, MARK will send screen captures to Gemini to locate "
-        "and revalidate the target. If both observations agree, it will "
-        "perform one left click. A local before/after comparison only checks "
-        "whether the screen changed, not whether the intended goal was reached."
+        "Source: full active screen (not a selected window or region).\n"
+        "Destination: Gemini receives two captures to locate and revalidate "
+        "the target. Additional before/after captures are local-only and are "
+        "not saved or sent to a provider.\n"
+        "If both observations agree, MARK performs one left click. The local "
+        "comparison checks only whether the screen changed, not whether the "
+        "intended goal was reached."
     )
 
     def run() -> str:
@@ -770,8 +891,10 @@ def _screen_click(description: object, arguments: dict) -> str:
                 maximum=_SCREEN_CLICK_MAXIMUM,
                 window_seconds=_SCREEN_CLICK_WINDOW_SECONDS,
             )
-        coordinates = _screen_find(description)
-        if coordinates is None:
+        coordinates = _screen_find(description, player=player)
+        if not isinstance(coordinates, tuple):
+            if isinstance(coordinates, str):
+                return coordinates
             return outcome.failed(
                 "computer_control",
                 "the described element was not found on the current screen",
@@ -779,7 +902,15 @@ def _screen_click(description: object, arguments: dict) -> str:
             )
         _require_pyautogui()
         coordinates = _screen_point(*coordinates, "screen_find coordinates")
-        refreshed = _screen_find(description)
+        refreshed = _screen_find(description, player=player)
+        if not isinstance(refreshed, tuple):
+            if isinstance(refreshed, str):
+                return refreshed
+            return outcome.failed(
+                "computer_control",
+                "the target could not be revalidated; no click was sent",
+                action="screen_click",
+            )
         if refreshed != coordinates:
             return outcome.failed(
                 "screen_click",
@@ -787,26 +918,112 @@ def _screen_click(description: object, arguments: dict) -> str:
                 coordinates=coordinates,
                 refreshed_coordinates=refreshed,
             )
-        before = pyautogui.screenshot()
-        before_hash = _screen_fingerprint(before)
-        _click(*coordinates)
-        after = pyautogui.screenshot()
-        after_hash = _screen_fingerprint(after)
-        changed = before_hash != after_hash
-        if not changed:
+        begin_activity = getattr(player, "begin_capture_activity", None)
+        end_activity = getattr(player, "end_capture_activity", None)
+        if not callable(begin_activity) or not callable(end_activity):
+            return outcome.failed(
+                "computer_control",
+                "the screen-verification indicator is unavailable; no click was sent",
+                action="screen_click",
+            )
+        stopped = begin_activity(
+            "Local before/after screen check for one approved click; "
+            "images are not sent to a provider."
+        )
+        if stopped is None:
+            return outcome.failed(
+                "computer_control",
+                "screen verification was cancelled; no click was sent",
+                action="screen_click",
+            )
+
+        result: str
+        indicator_error: Exception | None = None
+        try:
+            if stopped.is_set():
+                result = outcome.failed(
+                    "computer_control",
+                    "screen verification was stopped; no click was sent",
+                    action="screen_click",
+                )
+            else:
+                try:
+                    before_hash = _screen_fingerprint(pyautogui.screenshot())
+                except Exception as error:
+                    result = outcome.failed(
+                        "computer_control",
+                        "the screen could not be checked before the click",
+                        action="screen_click",
+                        error=type(error).__name__,
+                    )
+                else:
+                    if stopped.is_set():
+                        result = outcome.failed(
+                            "computer_control",
+                            "screen verification was stopped; no click was sent",
+                            action="screen_click",
+                        )
+                    else:
+                        try:
+                            _click(*coordinates)
+                        except Exception as error:
+                            result = outcome.unverified(
+                                "screen_click",
+                                "the click attempt failed and its effect is unknown",
+                                coordinates=coordinates,
+                                error=type(error).__name__,
+                            )
+                        else:
+                            if stopped.is_set():
+                                result = outcome.unverified(
+                                    "screen_click",
+                                    "the click was sent but verification was "
+                                    "stopped",
+                                    coordinates=coordinates,
+                                )
+                            else:
+                                try:
+                                    after_hash = _screen_fingerprint(
+                                        pyautogui.screenshot()
+                                    )
+                                except Exception as error:
+                                    result = outcome.unverified(
+                                        "screen_click",
+                                        "the click was sent but the result "
+                                        "could not be checked",
+                                        coordinates=coordinates,
+                                        error=type(error).__name__,
+                                    )
+                                else:
+                                    changed = before_hash != after_hash
+                                    if changed:
+                                        result = outcome.done(
+                                            "screen_click",
+                                            coordinates=coordinates,
+                                            screen_changed=True,
+                                            goal_verified=False,
+                                            verified=True,
+                                        )
+                                    else:
+                                        result = outcome.unverified(
+                                            "screen_click",
+                                            "the click was sent but the screen "
+                                            "did not visibly change",
+                                            coordinates=coordinates,
+                                            screen_changed=False,
+                                        )
+        finally:
+            try:
+                end_activity(stopped)
+            except Exception as error:
+                indicator_error = error
+        if indicator_error is not None:
             return outcome.unverified(
                 "screen_click",
-                "the click was sent but the screen did not visibly change",
-                coordinates=coordinates,
-                screen_changed=False,
+                "the screen-verification indicator could not be removed",
+                error=type(indicator_error).__name__,
             )
-        return outcome.done(
-            "screen_click",
-            coordinates=coordinates,
-            screen_changed=True,
-            goal_verified=False,
-            verified=True,
-        )
+        return result
 
     return action_policy.run_or_confirm(
         "computer_control",
@@ -956,7 +1173,7 @@ def _computer_control_impl(
             return _clipboard_paste(_text_input(params.get("text", "")))
 
         if action == "screenshot":
-            return _screenshot(params.get("path"))
+            return _screenshot(params.get("path"), player=player)
 
         if action == "inspect_windows":
             max_windows = params.get("limit", 20)
@@ -1037,12 +1254,16 @@ def _computer_control_impl(
             )
 
         if action == "screen_find":
-            coords = _screen_find(params.get("description", ""))
+            coords = _screen_find(
+                params.get("description", ""), player=player
+            )
+            if isinstance(coords, str):
+                return coords
             return f"{coords[0]},{coords[1]}" if coords else "NOT_FOUND"
 
         if action == "screen_click":
             desc   = params.get("description", "")
-            return _screen_click(desc, params)
+            return _screen_click(desc, params, player=player)
 
         if action == "wait":
             secs = float(params.get("seconds", 1.0))

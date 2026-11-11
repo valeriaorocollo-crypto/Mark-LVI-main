@@ -425,33 +425,102 @@ Optimized code:"""
 
 
 def _screen_debug_action(description, file_path, player, speak=None) -> str:
-    if player:
-        player.write_log("[Code] Taking screenshot for analysis...")
+    detail = (
+        "Source: full active screen (not a selected window or region)\n"
+        "Destination: Gemini for visual debugging\n"
+        "A temporary screenshot is created only after approval and deleted "
+        "after analysis. It is not retained by this operation.\n"
+        "If a related file is provided, up to 4,000 characters may also be "
+        "sent to Gemini.\n"
+        f"Question: {description or 'Describe the visible error'}\n"
+        f"Related file: {file_path or 'none'}"
+    )
 
-    print("[Code] Capturing screen for debug...")
-    screenshot_path = _take_screenshot()
-    if not screenshot_path:
-        return "Could not take screenshot, sir. Please make sure PyAutoGUI is installed."
+    def run() -> str:
+        begin_activity = getattr(player, "begin_capture_activity", None)
+        mark_transmitting = getattr(
+            player, "mark_capture_transmitting", None
+        )
+        end_activity = getattr(player, "end_capture_activity", None)
+        if not all(callable(fn) for fn in (
+            begin_activity, mark_transmitting, end_activity
+        )):
+            return outcome.failed(
+                "code_helper",
+                "the screen-capture indicator is unavailable; no image was captured",
+                action="screen_debug",
+            )
 
-    result = ""
-    try:
-        from google.genai import types
+        stopped = begin_activity(
+            "Full-screen capture to Gemini for visual debugging."
+        )
+        if stopped is None:
+            return outcome.failed(
+                "code_helper",
+                "screen capture was cancelled or its indicator could not be shown",
+                action="screen_debug",
+            )
 
-        file_content = ""
-        if file_path:
-            file_content, err = _read_file(file_path)
-            if err:
-                print("[Code] Related file could not be read.")
+        screenshot_path: Path | None = None
+        cleanup_error: OSError | None = None
+        indicator_cleanup_error: Exception | None = None
+        result: str | None = None
+        try:
+            if stopped.is_set():
+                result = outcome.failed(
+                    "code_helper",
+                    "screen capture was stopped before the image was read",
+                    action="screen_debug",
+                )
+            else:
+                print("[Code] Capturing screen for debug...")
+                screenshot_path = _take_screenshot()
+                if screenshot_path is None:
+                    result = outcome.failed(
+                        "code_helper",
+                        "the screen screenshot could not be captured",
+                        action="screen_debug",
+                    )
+                elif stopped.is_set():
+                    result = outcome.failed(
+                        "code_helper",
+                        "screen capture was stopped before upload; no image was sent",
+                        action="screen_debug",
+                    )
+                else:
+                    from google.genai import types
 
-        image_bytes  = screenshot_path.read_bytes()
+                    file_content = ""
+                    if file_path:
+                        file_content, err = _read_file(file_path)
+                        if err:
+                            print("[Code] Related file could not be read.")
 
-        user_question = description or "What error or problem do you see on the screen? How can it be fixed?"
+                    image_bytes = screenshot_path.read_bytes()
+                    if (
+                        not mark_transmitting(stopped)
+                        or stopped.is_set()
+                    ):
+                        result = outcome.failed(
+                            "code_helper",
+                            "screen capture was stopped before upload; no image was sent",
+                            action="screen_debug",
+                        )
+                    else:
+                        user_question = (
+                            description
+                            or "What error or problem do you see on the screen? "
+                            "How can it be fixed?"
+                        )
+                        context = ""
+                        if file_content:
+                            context = (
+                                "\n\nAdditionally, here is the related file "
+                                "content:\n```\n"
+                                f"{file_content[:4000]}\n```"
+                            )
 
-        context = ""
-        if file_content:
-            context = f"\n\nAdditionally, here is the related file content:\n```\n{file_content[:4000]}\n```"
-
-        analysis_prompt = f"""You are an expert programmer and debugger analyzing a screenshot.
+                        analysis_prompt = f"""You are an expert programmer and debugger analyzing a screenshot.
 
 User's question: {user_question}{context}
 
@@ -463,55 +532,106 @@ Please:
 
 Be specific and actionable. If you see an error message, quote it exactly."""
 
-        contents = [
-            types.Part.from_bytes(data=image_bytes, mime_type="image/png"),
-            analysis_prompt,
-        ]
-
-        response = gemini.call(contents, tier=gemini.SMART, timeout_ms=45_000)
-        if response is None:
-            result = "Sir, I couldn't reach Gemini to analyse that screenshot."
-        else:
-            analysis = (response.text or "").strip()
-            print("[Code] Screen analysis complete.")
-            if file_path and file_content:
-                code_match = re.search(
-                    r"```[a-zA-Z]*\n(.*?)```", analysis, re.DOTALL
+                        contents = [
+                            types.Part.from_bytes(
+                                data=image_bytes, mime_type="image/png"
+                            ),
+                            analysis_prompt,
+                        ]
+                        response = gemini.call(
+                            contents, tier=gemini.SMART, timeout_ms=45_000
+                        )
+                        if response is None:
+                            result = outcome.failed(
+                                "code_helper",
+                                "Gemini could not analyze the screenshot",
+                                action="screen_debug",
+                            )
+                        else:
+                            analysis = (response.text or "").strip()
+                            print("[Code] Screen analysis complete.")
+                            if file_path and file_content:
+                                code_match = re.search(
+                                    r"```[a-zA-Z]*\n(.*?)```",
+                                    analysis,
+                                    re.DOTALL,
+                                )
+                                if code_match:
+                                    result = _request_code_write(
+                                        "screen_debug",
+                                        Path(file_path),
+                                        code_match.group(1).strip(),
+                                        file_content,
+                                    )
+                            if result is None:
+                                result = analysis or outcome.unverified(
+                                    "code_helper",
+                                    "Gemini returned an empty screen analysis",
+                                    action="screen_debug",
+                                )
+        except Exception as error:
+            result = outcome.failed(
+                "code_helper",
+                f"screen analysis failed with {type(error).__name__}",
+                action="screen_debug",
+            )
+        finally:
+            if screenshot_path is not None:
+                try:
+                    screenshot_path.unlink()
+                except FileNotFoundError:
+                    pass
+                except OSError as error:
+                    cleanup_error = error
+            try:
+                end_activity(stopped)
+            except Exception as error:
+                indicator_cleanup_error = error
+                print(
+                    "[Code] Capture indicator cleanup failed "
+                    f"({type(error).__name__})."
                 )
-                if code_match:
-                    fixed_code = code_match.group(1).strip()
-                    result = _request_code_write(
-                        "screen_debug",
-                        Path(file_path),
-                        fixed_code,
-                        file_content,
-                    )
-            if not result:
-                result = analysis
-    except Exception as e:
-        result = outcome.failed(
-            "code_helper",
-            f"screen analysis failed with {type(e).__name__}",
-            action="screen_debug",
-        )
-    try:
-        screenshot_path.unlink()
-    except FileNotFoundError:
-        pass
-    except OSError as exc:
-        print(
-            f"[Code] Temporary debug screenshot could not be deleted "
-            f"({type(exc).__name__})."
-        )
-        return outcome.unverified(
-            "code_helper",
-            "the temporary debug screenshot could not be deleted and remains "
-            "on disk; remove it manually",
-            action="screen_debug",
-            screenshot_path=screenshot_path,
-            cleanup_error=type(exc).__name__,
-        )
-    return result
+
+        if cleanup_error is not None:
+            result = outcome.unverified(
+                "code_helper",
+                "the temporary debug screenshot could not be deleted and "
+                "remains on disk; remove it manually",
+                action="screen_debug",
+                screenshot_path=screenshot_path,
+                cleanup_error=type(cleanup_error).__name__,
+            )
+        elif indicator_cleanup_error is not None:
+            result = outcome.unverified(
+                "code_helper",
+                "the capture indicator could not be removed",
+                action="screen_debug",
+                error=type(indicator_cleanup_error).__name__,
+            )
+        if result is None:
+            result = outcome.failed(
+                "code_helper",
+                "screen analysis did not complete",
+                action="screen_debug",
+            )
+        if player is not None:
+            show_content = getattr(player, "show_content", None)
+            if callable(show_content) and result:
+                show_content("SCREEN DEBUG", outcome.unwrap(result))
+        return result
+
+    return action_policy.run_or_confirm(
+        "code_helper",
+        "screen_debug",
+        "Share a screen capture with Gemini for debugging?",
+        detail,
+        run,
+        arguments={
+            "action": "screen_debug",
+            "description": description,
+            "file_path": file_path,
+        },
+    )
 
 
 def code_helper(

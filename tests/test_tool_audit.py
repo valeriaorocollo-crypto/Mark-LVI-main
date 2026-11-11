@@ -143,6 +143,18 @@ class ToolAuditTests(unittest.TestCase):
             "high",
         )
         self.assertEqual(
+            tool_audit.classify_risk(
+                "computer_control", {"action": "screenshot"}
+            ),
+            "high",
+        )
+        self.assertEqual(
+            tool_audit.classify_risk(
+                "browser_control", {"action": "screenshot"}
+            ),
+            "high",
+        )
+        self.assertEqual(
             tool_audit.classify_risk("computer_control", {"action": "unrecognized"}),
             "unclassified",
         )
@@ -150,6 +162,9 @@ class ToolAuditTests(unittest.TestCase):
     def test_effect_contract_distinguishes_effect_classes(self) -> None:
         cases = (
             ("computer_control", {"action": "read_control"}, "read_only"),
+            ("computer_control", {"action": "screenshot"}, "local_reversible_change"),
+            ("browser_control", {"action": "screenshot"}, "local_reversible_change"),
+            ("code_helper", {"action": "screen_debug"}, "external_communication"),
             ("browser_control", {"action": "go_to", "url": "https://example.test"}, "navigation"),
             ("file_controller", {"action": "write", "path": "report.txt"}, "local_reversible_change"),
             ("file_controller", {"action": "delete", "path": "report.txt"}, "local_destructive_change"),

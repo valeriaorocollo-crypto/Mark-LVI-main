@@ -57,6 +57,8 @@ from PyQt6.QtWidgets import (
     QGraphicsScene, QGraphicsView,
     QStackedWidget, QTextEdit, QVBoxLayout, QWidget, QProgressBar, QSlider,
 )
+from core.confirm import ConfirmationDecision
+from core.session_grants import GrantStoreError
 
 try:
     from core.avatar import HoloAvatar
@@ -67,6 +69,17 @@ except Exception:      # pragma: no cover — HUD must never die over cosmetics
 # lives in its own module so ui.py does not grow past what one file should
 # hold. A missing or broken ui_holo must never take the assistant down with
 # it — the HUD falls back to plain panels and everything still works.
+try:
+    from ui_holo import (
+        CapabilityInspector,
+        HoloBootOverlay,
+        HoloFrame,
+        HoloGauge,
+        HoloSubsystemPanel,
+        ReactorCore,
+        tech_font,
+    )
+    HAVE_HOLO = True
 
 except Exception as _holo_error:      # noqa: BLE001 - reported, never fatal
     CapabilityInspector = HoloBootOverlay = None
@@ -2032,7 +2045,7 @@ class ConfirmBanner(_HudOverlay):
     talking, so this costs no latency — unlike the old gate, which spent two
     tool round trips on every power command."""
 
-    answered = pyqtSignal(str)
+    answered = pyqtSignal(object)
     _OW = 430
 
     def __init__(
@@ -2098,7 +2111,9 @@ class ConfirmBanner(_HudOverlay):
                 border: 1px solid {C.ACC}; border-radius: 3px; }}
             QPushButton:hover {{ background: rgba(255,107,0,40); }}
         """)
-        yes.clicked.connect(lambda: self.answered.emit("accept"))
+        yes.clicked.connect(
+            lambda: self.answered.emit(ConfirmationDecision.APPROVE_ONCE)
+        )
         row.addWidget(yes)
 
         no = QPushButton("CANCEL")
@@ -2110,7 +2125,9 @@ class ConfirmBanner(_HudOverlay):
                 border: 1px solid {C.BORDER}; border-radius: 3px; }}
             QPushButton:hover {{ color: {C.TEXT}; border-color: {C.BORDER_B}; }}
         """)
-        no.clicked.connect(lambda: self.answered.emit("cancel"))
+        no.clicked.connect(
+            lambda: self.answered.emit(ConfirmationDecision.CANCEL)
+        )
         row.addWidget(no)
         lay.addLayout(row)
 
@@ -2137,7 +2154,7 @@ class ConfirmBanner(_HudOverlay):
             )
             lay.addWidget(grant_note)
 
-            grant = QPushButton("ALLOW THIS SESSION + RUN")
+            grant = QPushButton("REMEMBER FOR 30 DAYS + RUN")
             grant.setFixedHeight(32)
             grant.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
             grant.setCursor(Qt.CursorShape.PointingHandCursor)
@@ -2146,7 +2163,11 @@ class ConfirmBanner(_HudOverlay):
                     border: 1px solid {C.GREEN}; border-radius: 3px; }}
                 QPushButton:hover {{ background: rgba(0,255,136,35); }}
             """)
-            grant.clicked.connect(lambda: self.answered.emit("grant"))
+            grant.clicked.connect(
+                lambda: self.answered.emit(
+                    ConfirmationDecision.REMEMBER_30_DAYS
+                )
+            )
             lay.addWidget(grant)
 
     @staticmethod
@@ -2159,7 +2180,7 @@ class ConfirmBanner(_HudOverlay):
         lifetime that says what actually happens — this session, until it is
         revoked — rather than a timeout that does not exist.
         """
-        lines = ["PERMISSION FOR THIS SESSION — allow during this session:"]
+        lines = ["REMEMBERED PERMISSION — saved locally for 30 days:"]
 
         if isinstance(grant_label, dict):
             capability = str(grant_label.get("capability", "") or "")
@@ -2181,11 +2202,60 @@ class ConfirmBanner(_HudOverlay):
             lines.append(f"  {grant_label}")
 
         lines.append(
-            "  Stays until you revoke it or MARK closes. It does not expire "
-            "on its own."
+            "  Saved when selected, even if this operation later fails."
         )
         lines.append("  Revoke it any time under SESSION PERMISSIONS.")
         return "\n".join(lines)
+
+
+class CaptureActivityBanner(_HudOverlay):
+    """Persistent, stoppable notice while a visual task is active."""
+
+    _OW = 460
+
+    def __init__(self, source: str, stopped: threading.Event, parent=None):
+        super().__init__(parent)
+        self._stopped = stopped
+        self.setAttribute(Qt.WidgetAttribute.WA_StyledBackground, True)
+        self.setStyleSheet(f"""
+            CaptureActivityBanner {{
+                background: rgba(3, 10, 14, 250);
+                border: 1px solid {C.ACC};
+                border-radius: 6px;
+            }}
+        """)
+        self.setFixedWidth(self._OW)
+        layout = QVBoxLayout(self)
+        layout.setContentsMargins(18, 14, 18, 14)
+        layout.setSpacing(8)
+        self._status = QLabel("VISUAL CAPTURE ACTIVE")
+        self._status.setFont(QFont("Courier New", 10, QFont.Weight.Bold))
+        self._status.setStyleSheet(f"color: {C.ACC}; background: transparent;")
+        layout.addWidget(self._status)
+        detail = QLabel(str(source))
+        detail.setWordWrap(True)
+        detail.setTextFormat(Qt.TextFormat.PlainText)
+        detail.setStyleSheet(f"color: {C.TEXT_MED}; background: transparent;")
+        layout.addWidget(detail)
+        self._stop = QPushButton("STOP OPERATION")
+        self._stop.setFixedHeight(32)
+        self._stop.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
+        self._stop.setStyleSheet(
+            f"color: {C.RED}; border: 1px solid {C.RED}; "
+            "background: transparent; border-radius: 3px;"
+        )
+        self._stop.clicked.connect(self._stop_before_upload)
+        layout.addWidget(self._stop)
+
+    def _stop_before_upload(self) -> None:
+        self._stopped.set()
+        self._status.setText("STOP REQUESTED — pending operation will be blocked")
+        self._stop.setEnabled(False)
+
+    def mark_transmitting(self) -> None:
+        self._status.setText("SENDING IMAGE TO GEMINI")
+        self._stop.setText("UPLOAD STARTED")
+        self._stop.setEnabled(False)
 
 
 class SessionGrantsOverlay(_HudOverlay):
@@ -2226,8 +2296,8 @@ class SessionGrantsOverlay(_HudOverlay):
         layout.addWidget(title)
 
         hint = QLabel(
-            "Permissions you granted for this session. They stay open until "
-            "you revoke them or MARK closes — they do not expire on their own."
+            "Remembered permissions are stored in this local user profile and "
+            "expire 30 days after approval. Revoke them individually or all at once."
         )
         hint.setWordWrap(True)
         hint.setFont(QFont("Courier New", 7))
@@ -2283,20 +2353,11 @@ class SessionGrantsOverlay(_HudOverlay):
 
     @staticmethod
     def _lifetime(grant) -> str:
-        """How long this permission lasts, stated as what actually happens."""
+        """Display the fixed expiration date rather than a sliding lifetime."""
         expires_at = getattr(grant, "expires_at", None)
-        if expires_at:
-            remaining = getattr(grant, "expires_in_seconds", None)
-            if isinstance(remaining, (int, float)):
-                return f"expires in {max(0, int(remaining)) // 60} min"
-            return "expires at a set time"
-        remaining = getattr(grant, "expires_in_seconds", None)
-        if isinstance(remaining, (int, float)) and remaining > 0:
-            # A grant with a countdown still exists, but the model says a
-            # session permission does not expire on its own — so say what is
-            # true rather than what the number implies.
-            return f"expires in {max(0, int(remaining)) // 60} min"
-        return "until MARK closes"
+        if isinstance(expires_at, int):
+            return f"expires {time.strftime('%Y-%m-%d %H:%M', time.localtime(expires_at))}"
+        return "expiration unavailable"
 
     def _refresh_items(self) -> None:
         from core import session_grants
@@ -2304,8 +2365,10 @@ class SessionGrantsOverlay(_HudOverlay):
         self._items.clear()
         try:
             grants = session_grants.active()
-        except Exception:
-            grants = ()
+        except GrantStoreError as error:
+            self._items.addItem(f"Permissions unavailable: {error}")
+            self._items.item(0).setFlags(Qt.ItemFlag.NoItemFlags)
+            return
         if not grants:
             self._items.addItem("No active session permissions.")
             self._items.item(0).setFlags(Qt.ItemFlag.NoItemFlags)
@@ -2315,14 +2378,24 @@ class SessionGrantsOverlay(_HudOverlay):
             capability = getattr(scope, "capability", "?")
             integration = getattr(scope, "integration", "?")
             resource = getattr(scope, "resource", "?")
-            uses = getattr(grant, "uses", None)
-            if uses is None:
-                uses = getattr(grant, "use_count", 0)
+            uses = getattr(grant, "use_count", 0)
+            last_used_at = getattr(grant, "last_used_at", None)
+            grant_id = str(getattr(grant, "grant_id", "") or "")
             label = str(getattr(grant, "label", "") or "")
-            lines = [f"{capability}  /  {integration}  /  {resource}"]
+            lines = [
+                f"ID {grant_id[:8] or '?'}  /  "
+                f"{capability}  /  {integration}  /  {resource}"
+            ]
             detail = f"   {self._lifetime(grant)}"
-            if isinstance(uses, int) and uses:
+            if isinstance(uses, int):
                 detail += f"  ·  used {uses}×"
+            if isinstance(last_used_at, int):
+                detail += (
+                    "  ·  last used "
+                    f"{time.strftime('%Y-%m-%d %H:%M', time.localtime(last_used_at))}"
+                )
+            else:
+                detail += "  ·  not used yet"
             if label:
                 detail += f"  ·  {label}"
             lines.append(detail)
@@ -2336,7 +2409,13 @@ class SessionGrantsOverlay(_HudOverlay):
         item = self._items.currentItem()
         scope = item.data(Qt.ItemDataRole.UserRole) if item else None
         if scope is not None:
-            session_grants.revoke(scope)
+            try:
+                session_grants.revoke(scope)
+            except GrantStoreError as error:
+                self._items.clear()
+                self._items.addItem(f"Could not revoke permission: {error}")
+                self._items.item(0).setFlags(Qt.ItemFlag.NoItemFlags)
+                return
         self._refresh_items()
 
     def _revoke_all(self) -> None:
@@ -2344,8 +2423,11 @@ class SessionGrantsOverlay(_HudOverlay):
 
         try:
             session_grants.revoke_all()
-        except Exception:
-            pass
+        except GrantStoreError as error:
+            self._items.clear()
+            self._items.addItem(f"Could not revoke permissions: {error}")
+            self._items.item(0).setFlags(Qt.ItemFlag.NoItemFlags)
+            return
         self._refresh_items()
 
 
@@ -4749,6 +4831,9 @@ class MainWindow(QMainWindow):
     _clipboard_sig  = pyqtSignal(str)        # clipboard text changed (thread-safe)
     _confirm_sig    = pyqtSignal(str, str, str)
     _confirm_hide_sig = pyqtSignal()
+    _capture_activity_start_sig = pyqtSignal(str, object, object)
+    _capture_activity_transmitting_sig = pyqtSignal(object, object)
+    _capture_activity_hide_sig = pyqtSignal(object)
     _task_progress_sig = pyqtSignal(str, str, str, int, int, str)
     _wake_dl_sig    = pyqtSignal(bool, str)  # wake-word install finished (ok, message)
     _quiz_sig       = pyqtSignal(str, object, object)  # (topic, questions, grader)
@@ -4788,6 +4873,8 @@ class MainWindow(QMainWindow):
         self.on_language_change = None  # callable: () -> None — rebuild with saved language
         self.on_audio_device_change = None  # callable: () -> None — reopen audio streams
         self._confirm_overlay  = None   # live ConfirmBanner, if one is on screen
+        self._capture_activity_overlay = None
+        self._capture_activity_token = None
         self._session_grants_overlay = None
         self._task_progress_overlay = None
         self.get_plugins       = None   # callable: () -> list[dict], set by JarvisLive
@@ -5053,6 +5140,11 @@ class MainWindow(QMainWindow):
         self._camera_sig.connect(self._show_camera_frame)
         self._confirm_sig.connect(self._show_confirm_banner)
         self._confirm_hide_sig.connect(self._hide_confirm_banner)
+        self._capture_activity_start_sig.connect(self._show_capture_activity)
+        self._capture_activity_transmitting_sig.connect(
+            self._show_capture_transmitting
+        )
+        self._capture_activity_hide_sig.connect(self._hide_capture_activity)
         self._task_progress_sig.connect(self._show_task_progress)
         self._cam_stream_sig.connect(self._on_cam_stream)
         self._cam_frame_sig.connect(self._on_cam_frame)
@@ -7592,6 +7684,56 @@ class MainWindow(QMainWindow):
             ov.deleteLater()
             self._confirm_overlay = None
 
+    def _show_capture_activity(
+        self,
+        source: str,
+        stopped: threading.Event,
+        ready: threading.Event,
+    ) -> None:
+        try:
+            if self._capture_activity_overlay is not None:
+                stopped.set()
+                self._log.append_log(
+                    "ERR: Another visual capture is already active."
+                )
+                return
+            overlay = CaptureActivityBanner(
+                source, stopped, parent=self.centralWidget()
+            )
+            self._capture_activity_overlay = overlay
+            self._capture_activity_token = stopped
+            self._centre_overlay(overlay)
+        except Exception as error:
+            stopped.set()
+            self._log.append_log(
+                "ERR: Visual capture indicator could not be displayed "
+                f"({type(error).__name__}); capture blocked."
+            )
+        finally:
+            ready.set()
+
+    def _show_capture_transmitting(
+        self, token: threading.Event, ready: threading.Event
+    ) -> None:
+        try:
+            if (
+                self._capture_activity_token == token
+                and self._capture_activity_overlay is not None
+            ):
+                self._capture_activity_overlay.mark_transmitting()
+        finally:
+            ready.set()
+
+    def _hide_capture_activity(self, token: threading.Event) -> None:
+        if self._capture_activity_token != token:
+            return
+        overlay = self._capture_activity_overlay
+        self._capture_activity_overlay = None
+        self._capture_activity_token = None
+        if overlay is not None:
+            overlay.hide()
+            overlay.deleteLater()
+
     def _on_confirm_answered(self, decision: str):
         # Tear the banner down first: core.confirm.resolve() may be about to
         # shut the machine down, and a live widget mid-callback is not where you
@@ -7942,6 +8084,31 @@ class JarvisUI:
     def hide_confirm(self) -> None:
         """Thread-safe: take the gate down."""
         self._win._confirm_hide_sig.emit()
+
+    def begin_capture_activity(
+        self, source: str
+    ) -> threading.Event | None:
+        """Show the capture warning on the UI thread before any image is read."""
+        stopped = threading.Event()
+        ready = threading.Event()
+        self._win._capture_activity_start_sig.emit(source, stopped, ready)
+        if not ready.wait(5):
+            stopped.set()
+            return None
+        if stopped.is_set():
+            return None
+        return stopped
+
+    def mark_capture_transmitting(self, token: threading.Event) -> bool:
+        ready = threading.Event()
+        self._win._capture_activity_transmitting_sig.emit(token, ready)
+        if not ready.wait(5):
+            token.set()
+            return False
+        return not token.is_set()
+
+    def end_capture_activity(self, token: threading.Event) -> None:
+        self._win._capture_activity_hide_sig.emit(token)
 
     @property
     def get_plugins(self):

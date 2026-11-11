@@ -36,9 +36,11 @@ WHAT BELONGS HERE AND WHAT DOES NOT
 
 from __future__ import annotations
 
+import asyncio
 import threading
 import time
 from dataclasses import dataclass
+from enum import Enum
 from typing import Callable, Literal, Optional
 
 from core import outcome, tool_audit
@@ -51,6 +53,12 @@ MAX_TITLE_LENGTH = 240
 MAX_DETAIL_LENGTH = 20_000
 
 
+class ConfirmationDecision(Enum):
+    APPROVE_ONCE = "approve_once"
+    REMEMBER_30_DAYS = "remember_30_days"
+    CANCEL = "cancel"
+
+
 @dataclass
 class _Pending:
     key:     str
@@ -61,6 +69,7 @@ class _Pending:
     voice_handler: Optional[Callable[[str], "VoiceDecision"]] = None
     button_enabled: bool = True
     grant_action: Optional[Callable[[], None]] = None
+    on_cancel: Optional[Callable[[], None]] = None
 
 
 @dataclass(frozen=True)
@@ -104,6 +113,7 @@ def request(
     voice_handler: Optional[Callable[[str], VoiceDecision]] = None,
     grant_action: Optional[Callable[[], None]] = None,
     grant_label: str = "",
+    on_cancel: Optional[Callable[[], None]] = None,
 ) -> str:
     """Park an irreversible action behind the on-screen gate.
 
@@ -131,10 +141,12 @@ def request(
         or len(grant_label) > MAX_TITLE_LENGTH
     ):
         return "I cannot offer this session permission safely. Nothing was done."
+    if on_cancel is not None and not callable(on_cancel):
+        return "I cannot safely track this confirmation. Nothing was done."
 
     pending = _Pending(
         key=key, title=title, detail=detail, run=run, at=time.monotonic(),
-        voice_handler=voice_handler,
+        voice_handler=voice_handler, on_cancel=on_cancel,
     )
     with _lock:
         if _show_cb is None:
@@ -188,14 +200,102 @@ def request(
     if grant_offered:
         return (
             f"[CONFIRMATION_PENDING] Review the action on the HUD. Choose "
-            f"CONFIRM for this operation only, or ALLOW THIS SESSION to grant "
-            f"the displayed scoped permission and run this operation."
+            f"ALLOW ONCE for this operation only, or REMEMBER FOR 30 DAYS "
+            f"to save the displayed local permission and run this operation."
         )
     return (
         f"[CONFIRMATION_PENDING] I have put a confirmation on screen for: {title}. "
         f"Say ONE short sentence in the user's own language telling them you need "
         f"them to confirm it on the HUD before you do it. Do not claim it is done."
     )
+
+
+async def request_async(
+    key: str,
+    title: str,
+    detail: str,
+    run: Callable[[], str],
+    *,
+    grant_action: Optional[Callable[[], None]] = None,
+    grant_label: str = "",
+    cancel_event: threading.Event | None = None,
+) -> str:
+    """Wait asynchronously for a HUD decision and return its action result."""
+    loop = asyncio.get_running_loop()
+    result_future: asyncio.Future[str] = loop.create_future()
+
+    def finish_future(result: str) -> None:
+        if not result_future.done():
+            result_future.set_result(result)
+
+    def on_cancel() -> None:
+        if cancel_event is not None:
+            cancel_event.set()
+        loop.call_soon_threadsafe(
+            finish_future,
+            outcome.failed(
+                "confirmation",
+                "visual capture was not approved; no image was captured or sent",
+                action=key,
+            ),
+        )
+
+    def run_after_approval() -> str:
+        try:
+            result = run()
+        except Exception as error:
+            result = outcome.failed(
+                "confirmation",
+                "the approved visual capture failed",
+                action=key,
+                error=type(error).__name__,
+            )
+        loop.call_soon_threadsafe(finish_future, result)
+        return result
+
+    message = request(
+        key,
+        title,
+        detail,
+        run_after_approval,
+        grant_action=grant_action,
+        grant_label=grant_label,
+        on_cancel=on_cancel,
+    )
+    with _lock:
+        is_our_confirmation = (
+            _pending is not None and _pending.run is run_after_approval
+        )
+    if not is_our_confirmation:
+        return message
+
+    try:
+        return await asyncio.wait_for(result_future, TIMEOUT_SECONDS + 1)
+    except asyncio.TimeoutError:
+        if cancel_event is not None:
+            cancel_event.set()
+        cancel_pending(key, run_after_approval)
+        return outcome.failed(
+            "confirmation",
+            "visual capture approval timed out; no image was captured or sent",
+            action=key,
+        )
+
+
+def cancel_pending(key: str, expected_run: Callable[[], str] | None = None) -> bool:
+    """Cancel a specific pending confirmation, used when an async wait expires."""
+    global _pending
+    with _lock:
+        pending = _pending
+        if (
+            pending is None
+            or pending.key != key
+            or (expected_run is not None and pending.run is not expected_run)
+        ):
+            return False
+        _pending = None
+    _finish(pending, False)
+    return True
 
 
 def _finish(
@@ -218,6 +318,8 @@ def _finish(
 
     if time.monotonic() - p.at > TIMEOUT_SECONDS:
         _log(f"SYS: Confirmation expired — {p.key}")
+        if p.on_cancel is not None:
+            p.on_cancel()
         return
 
     if not isinstance(accepted, bool):
@@ -226,6 +328,8 @@ def _finish(
 
     if not accepted:
         _log(f"SYS: Cancelled — {p.key}")
+        if p.on_cancel is not None:
+            p.on_cancel()
         return
 
     if grant:
@@ -239,6 +343,8 @@ def _finish(
                 f"ERR: Session permission could not be created "
                 f"({type(error).__name__}); action was not run — {p.key}"
             )
+            if p.on_cancel is not None:
+                p.on_cancel()
             return
 
     def _worker():
@@ -269,20 +375,32 @@ def _finish(
                      name=f"confirm-{p.key}").start()
 
 
-def resolve(accepted: bool | str) -> None:
+def resolve(accepted: ConfirmationDecision | bool | str) -> None:
     """Resolve the visible confirmation from an explicit HUD control."""
     global _pending
 
-    grant_requested = accepted == "grant"
-    if isinstance(accepted, bool):
-        should_run = accepted
-    elif accepted in {"accept", "grant"}:
-        should_run = True
-    elif accepted == "cancel":
-        should_run = False
+    if isinstance(accepted, ConfirmationDecision):
+        decision = accepted
+    elif isinstance(accepted, bool):
+        decision = (
+            ConfirmationDecision.APPROVE_ONCE
+            if accepted else ConfirmationDecision.CANCEL
+        )
+    elif isinstance(accepted, str) and accepted == "accept":
+        decision = ConfirmationDecision.APPROVE_ONCE
+    elif isinstance(accepted, str) and accepted == "cancel":
+        decision = ConfirmationDecision.CANCEL
+    elif isinstance(accepted, str) and accepted == "grant":
+        _log(
+            "ERR: Untrusted string decisions cannot create permissions; "
+            "the HUD must provide a typed decision"
+        )
+        return
     else:
         _log("ERR: Invalid confirmation decision; action was not run")
         return
+    grant_requested = decision is ConfirmationDecision.REMEMBER_30_DAYS
+    should_run = decision is not ConfirmationDecision.CANCEL
 
     blocked: Optional[tuple[Callable[[str, str], None], str, str, str]] = None
     button_blocked = False

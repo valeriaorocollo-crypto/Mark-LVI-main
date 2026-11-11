@@ -84,7 +84,7 @@ _ACTION_RISK = {
         "list_browsers": "read_or_navigate",
         "get_text": "read_or_navigate",
         "get_url": "read_or_navigate",
-        "screenshot": "read_or_navigate",
+        "screenshot": "high",
         "scroll": "read_or_navigate",
         "go_to": "read_or_navigate",
         "search": "read_or_navigate",
@@ -119,7 +119,7 @@ _ACTION_RISK = {
     },
     "computer_control": {
         "close_app": "high",
-        "screenshot": "read_or_navigate",
+        "screenshot": "high",
         "screen_find": "high",
         "inspect_windows": "read_or_navigate",
         "inspect_controls": "read_or_navigate",
@@ -516,6 +516,8 @@ def classify_action_effect(tool: str, arguments: dict | None = None) -> str:
             )
         if action in {"screen_find", "copy", "user_data"}:
             return "external_communication"
+        if action == "screenshot":
+            return "local_reversible_change"
         if action == "close_app":
             target = args.get("app_name") or args.get("text")
             return (
@@ -523,6 +525,8 @@ def classify_action_effect(tool: str, arguments: dict | None = None) -> str:
                 if isinstance(target, str) and target.strip()
                 else "unknown"
             )
+    if name == "browser_control" and action == "screenshot":
+        return "local_reversible_change"
 
     if name == "browser_control":
         if action in {"click", "type"}:
@@ -560,6 +564,8 @@ def classify_action_effect(tool: str, arguments: dict | None = None) -> str:
     if name == "manage_monitor" and action in {"add", "remove"}:
         return "financial_administrative"
     if name == "computer_control" and action in {"screen_find", "copy", "user_data"}:
+        return "external_communication"
+    if name == "code_helper" and action == "screen_debug":
         return "external_communication"
     if name == "file_controller":
         if action == "delete":

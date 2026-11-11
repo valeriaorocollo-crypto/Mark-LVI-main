@@ -6,6 +6,7 @@ import contextvars
 import json
 import re
 from contextlib import contextmanager
+from pathlib import Path
 
 from core import confirm, outcome, session_grants, tool_audit
 
@@ -64,15 +65,36 @@ _MAX_ARGUMENT_ITEMS = 1_000
 _MAX_ARGUMENT_STRING = 100_000
 
 
-def _session_grant_for(tool: str, action: str) -> tuple[
+def _session_grant_for(
+    tool: str, action: str, arguments: dict
+) -> tuple[
     session_grants.GrantScope, str
 ] | None:
     if tool == "computer_control" and action == "screen_find":
-        scope = session_grants.GrantScope(
-            "share_screen_search", "Gemini", "active_screen"
-        )
-        return scope, "Send requested screen captures to Gemini for visual search"
+        description = arguments.get("description")
+        try:
+            scope = session_grants.scope_for("share_screen_search", description)
+            label = session_grants.permission_label(
+                "share_screen_search", description
+            )
+        except ValueError:
+            return None
+        return scope, label
     return None
+
+
+def _session_grant_allows(
+    tool: str, action: str, arguments: dict
+) -> tuple[bool, tuple[session_grants.GrantScope, str] | None]:
+    grant = _session_grant_for(tool, action, arguments)
+    if grant is None:
+        return False, None
+    try:
+        return session_grants.allows(grant[0]), grant
+    except session_grants.GrantStoreError as error:
+        raise RuntimeError(
+            "the local permission store is unavailable; nothing was executed"
+        ) from error
 
 
 def _effect_arguments(tool: str, action: str, arguments: dict | None) -> dict:
@@ -80,6 +102,18 @@ def _effect_arguments(tool: str, action: str, arguments: dict | None) -> dict:
     action_key = "mode" if tool == "task_planner" else "action"
     params[action_key] = action
     return params
+
+
+def _screenshot_destination(arguments: dict) -> str:
+    requested = arguments.get("path")
+    if requested is None or requested == "":
+        return str(Path.home() / "Desktop" / "jarvis_screenshot.png")
+    if not isinstance(requested, str):
+        return "invalid requested path"
+    try:
+        return str(Path(requested).expanduser().resolve())
+    except (OSError, RuntimeError, ValueError):
+        return requested
 
 
 def _has_sensitive_target(value) -> bool:
@@ -406,8 +440,18 @@ def dispatch(
             exact = ""
         if exact in authorized_plan:
             return run()
-    session_grant = _session_grant_for(tool, action)
-    if session_grant is not None and session_grants.allows(session_grant[0]):
+    try:
+        grant_allowed, session_grant = _session_grant_allows(
+            tool, action, arguments
+        )
+    except RuntimeError as error:
+        return outcome.failed(
+            "action_policy",
+            str(error),
+            tool=tool,
+            action=action,
+        )
+    if grant_allowed:
         return run()
     if risk not in _CONFIRMATION_RISKS:
         return run()
@@ -422,7 +466,41 @@ def dispatch(
             "arguments could not be safely shown for confirmation; nothing was executed",
             tool=tool,
         )
-    detail = f"Tool: {tool}\nAction: {action}\nArguments:\n{serialized}"
+    if tool == "computer_control" and action == "screen_find":
+        grant_note = (
+            "A remembered permission applies only to this exact target "
+            "description and expires 30 days after approval."
+            if session_grant is not None
+            else "A reusable permission is unavailable for this request; "
+            "approval applies only once."
+        )
+        detail = (
+            "Source: full active screen (not a selected window or region)\n"
+            "Destination: Gemini visual search\n"
+            "The screenshot is captured after approval and is not saved by "
+            "this operation.\n"
+            f"Target description:\n{arguments.get('description', '')}\n\n"
+            f"{grant_note}\n"
+            f"Arguments:\n{serialized}"
+        )
+    elif tool == "computer_control" and action == "screenshot":
+        detail = (
+            "Source: full active screen (not a selected window or region)\n"
+            f"Destination: local file ({_screenshot_destination(arguments)})\n"
+            "The image is captured only after approval and is saved locally; "
+            "this operation does not send it to a provider.\n"
+            f"Arguments:\n{serialized}"
+        )
+    elif tool == "browser_control" and action == "screenshot":
+        detail = (
+            "Source: the active browser page\n"
+            f"Destination: local file ({_screenshot_destination(arguments)})\n"
+            "The image is captured only after approval and is saved locally; "
+            "this operation does not send it to a provider.\n"
+            f"Arguments:\n{serialized}"
+        )
+    else:
+        detail = f"Tool: {tool}\nAction: {action}\nArguments:\n{serialized}"
     if len(detail) > confirm.MAX_DETAIL_LENGTH:
         return outcome.failed(
             "action_policy",

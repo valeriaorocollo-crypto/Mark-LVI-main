@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import asyncio
 import json
+import threading
 import unittest
 from types import SimpleNamespace
 from unittest.mock import patch
@@ -33,6 +34,25 @@ class InputValidationTests(unittest.TestCase):
             args=args,
             id="synthetic-call",
         ))).response["result"]
+
+    @staticmethod
+    def _capture_ui(
+        events: list[str] | None = None, *, stopped: bool = False
+    ):
+        events = events if events is not None else []
+
+        class CaptureUI:
+            def begin_capture_activity(self, source: str) -> threading.Event:
+                events.append("indicator")
+                token = threading.Event()
+                if stopped:
+                    token.set()
+                return token
+
+            def end_capture_activity(self, token: threading.Event) -> None:
+                events.append("indicator-ended")
+
+        return CaptureUI()
 
     def test_core_tool_specific_limits_fail_before_side_effects(self) -> None:
         with (
@@ -347,6 +367,13 @@ class InputValidationTests(unittest.TestCase):
     def test_screen_click_reports_done_only_after_visible_change(self) -> None:
         image_before = SimpleNamespace(tobytes=lambda: b"before")
         image_after = SimpleNamespace(tobytes=lambda: b"after")
+        events: list[str] = []
+        images = iter((image_before, image_after))
+
+        def screenshot():
+            events.append("screenshot")
+            return next(images)
+
         with (
             patch.object(computer_control, "_screen_find", return_value=(10, 20)),
             patch.object(computer_control, "_require_pyautogui"),
@@ -356,7 +383,7 @@ class InputValidationTests(unittest.TestCase):
             patch.object(
                 computer_control.pyautogui,
                 "screenshot",
-                side_effect=[image_before, image_after],
+                side_effect=screenshot,
             ),
             patch.object(computer_control, "_click") as click,
             patch.object(
@@ -368,11 +395,14 @@ class InputValidationTests(unittest.TestCase):
             result = computer_control.computer_control({
                 "action": "screen_click",
                 "description": "Save button",
-            })
+            }, player=self._capture_ui(events))
 
         self.assertIn("status=done", result)
         self.assertIn("goal_verified=false", result)
         click.assert_called_once_with(10, 20)
+        self.assertEqual(
+            events, ["indicator", "screenshot", "screenshot", "indicator-ended"]
+        )
 
     def test_screen_click_is_unverified_when_screen_does_not_change(self) -> None:
         image = SimpleNamespace(tobytes=lambda: b"same")
@@ -397,9 +427,33 @@ class InputValidationTests(unittest.TestCase):
             result = computer_control.computer_control({
                 "action": "screen_click",
                 "description": "Save button",
-            })
+            }, player=self._capture_ui())
 
         self.assertIn("status=unverified", result)
+
+    def test_screen_click_stop_prevents_verification_capture_and_click(self) -> None:
+        events: list[str] = []
+        with (
+            patch.object(computer_control, "_screen_find", return_value=(10, 20)),
+            patch.object(computer_control, "_require_pyautogui"),
+            patch.object(computer_control.pyautogui, "size", return_value=(1920, 1080)),
+            patch.object(computer_control.pyautogui, "screenshot") as screenshot,
+            patch.object(computer_control, "_click") as click,
+            patch.object(
+                computer_control.action_policy,
+                "request_confirmation",
+                side_effect=lambda *_args, **kwargs: kwargs["run"](),
+            ),
+        ):
+            result = computer_control.computer_control(
+                {"action": "screen_click", "description": "Save button"},
+                player=self._capture_ui(events, stopped=True),
+            )
+
+        self.assertIn("status=failed", result)
+        screenshot.assert_not_called()
+        click.assert_not_called()
+        self.assertEqual(events, ["indicator", "indicator-ended"])
 
     def test_screen_click_aborts_if_target_moves_after_confirmation(self) -> None:
         with (
@@ -456,7 +510,7 @@ class InputValidationTests(unittest.TestCase):
                 computer_control.computer_control({
                     "action": "screen_click",
                     "description": "Save button",
-                })
+                }, player=self._capture_ui())
                 for _ in range(4)
             ]
 

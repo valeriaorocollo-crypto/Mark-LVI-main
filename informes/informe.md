@@ -2,8 +2,9 @@
 
 **Fecha de consolidación:** 11 de noviembre de 2026
 **Base examinada:** árbol de trabajo local de `Mark-LVI-main`, commit HEAD
-`9c9864e` (`Merge branch 'main'...`) y modificaciones locales presentes durante
-la revisión.
+`4461d77bd108ec49794ff08c8d75c45c2a1b96fe`, más modificaciones locales sin
+commit. La validación indicada abajo se ejecutó sobre ese árbol modificado, no
+sobre un commit integrado.
 
 ## 1. Resumen ejecutivo
 
@@ -22,23 +23,23 @@ ejecutar tareas sensibles desatendido. Algunas capacidades tienen pruebas
 sintéticas sólidas; eso no demuestra que funcionen en cada versión real de
 Windows, aplicación, cuenta, idioma o escala de pantalla.
 
-Las prioridades inmediatas son:
+Estado actualizado de las prioridades:
 
-1. Poner la captura de pantalla/cámara solicitada por el modelo bajo una
-   política de consentimiento y un indicador visible; no tratarla como una
-   lectura inocua solo por llevar el nombre `screen_process`.
-2. Corregir el permiso de `screen_find`: el texto del HUD afirma que dura hasta
-   cerrar MARK, pero el código lo vence en una hora; además, el alcance
-   `active_screen` no identifica una ventana o tarea y se reutiliza sin
-   comparar el objetivo de cada solicitud.
+1. **P0 privacidad implementado localmente:** las rutas de captura requieren
+   aprobación HUD o un grant exacto de tarea; se muestran fuente/proveedor,
+   indicador y controles de cancelación. La aceptación visual/UIA y la CI
+   integrada siguen pendientes.
+2. **P0 grants implementado localmente:** permisos persistentes por perfil,
+   alcance hash de tarea, vencimiento fijo de 30 días, uso/revocación visibles
+   y rechazo seguro ante almacén inválido. No se debe declarar validación de
+   extremo a extremo sin probar HUD/UIA y CI sobre un commit integrado.
 3. Mostrar los efectos reales de cada paso del plan. El campo `effect` se
    calcula hoy a partir del estado `"started"`/`"unknown"` y la vista previa no
    presenta efectos por paso.
 4. Mantener bloqueadas las integraciones externas cuyo resultado real no está
    verificado, especialmente envío de mensajes. No repetir acciones ambiguas.
-5. Reconciliar evidencia y compatibilidad: la suite actual pasó localmente en
-   Python 3.12; la matriz remota citada por los documentos pertenece a commits
-   previos, no al árbol de trabajo modificado de esta revisión.
+5. La matriz local completa pasó en Python 3.11–3.13; falta ejecutar CI remota
+   sobre un commit integrado. Las ejecuciones remotas citadas son históricas.
 
 La hoja de ruta de ejecución y puertas está en
 [plan_seguimiento.md](./plan_seguimiento.md). El catálogo de oportunidades de
@@ -71,8 +72,8 @@ producto está en [ideas.md](./ideas.md).
 - No se inició sesión en proveedores, no se enviaron mensajes, no se hicieron
   compras/instalaciones y no se cambiaron firewall o ajustes de Windows.
 - No se probó cada aplicación real ni todos los dispositivos de audio.
-- No se certificó Windows 11, Python 3.11/3.13 o una instalación limpia en este
-  corte.
+- Se ejecutó la matriz local en Python 3.11/3.12/3.13; no se validó una
+  instalación limpia ni se ejecutaron los tests UIA opt-in en este corte.
 - Los resultados guardados en la documentación y en `evidence/` se conservan
   como antecedentes, pero no se presumen como una ejecución del checkout
   actual.
@@ -89,21 +90,26 @@ producto está en [ideas.md](./ideas.md).
 
 | Dato | Resultado actual | Interpretación |
 |---|---|---|
-| Rama/HEAD | `9c9864e` (merge local visible en el log) | La rama contiene trabajo previo, pero el checkout no está limpio. |
-| Cambios locales | `SECURITY-REVIEW.md`, `informe.md`, `plan_seguimiento.md`, `setup.py`, `ui.py` modificados; `ideas.md` sin seguimiento | No asumir que esos cambios están publicados ni descartarlos. |
+| Rama/HEAD base | `4461d77bd108ec49794ff08c8d75c45c2a1b96fe` | La evidencia de esta sesión cubre el árbol local modificado sobre este HEAD; aún no existe commit integrado de esos cambios. |
+| Cambios locales | Árbol sucio, con modificaciones preexistentes y de esta tarea | No asumir que están publicados ni descartar cambios ajenos. El snapshot anterior a los cambios no quedó conservado como artefacto. |
 | Código Python | 129 archivos en el árbol examinado, contando `tests/` | Recuento de archivos, no medida de madurez. |
 | Pruebas | 51 archivos de prueba encontrados | Hay cobertura amplia, pero también skips y dependencias de entorno. |
-| Ejecución local de unittest | Python 3.12.10: 485 pruebas, 0 fallos, 0 errores, 12 omitidas | Es la validación reproducible ejecutada durante esta consolidación. Las omitidas no cuentan como aprobadas. |
-| Warnings vistos en esa ejecución | Aviso deprecado `Starlette TestClient`/`httpx`, aviso `pynvml` y avisos UIA/asyncio del entorno | No hicieron fallar la suite; deben revisarse, no ocultarse. |
+| Ejecución local de unittest | Python 3.11/3.12/3.13: 505 pruebas por versión, 0 fallos, 0 errores; 13/12/13 omitidas | Corrida sobre el mismo árbol de trabajo local sin commit. Los skips no cuentan como aprobados. |
+| Validaciones locales adicionales | `compileall`, `setup.py --dry-run` y `pip check` pasan en las tres versiones | No sustituyen CI ni instalación limpia. |
+| Warnings vistos | Aviso deprecado `Starlette TestClient`/`httpx`, aviso `pynvml` y mensajes UIA/asyncio/COM del entorno | No hicieron fallar la suite; no se ocultaron ni se consideran resueltos. |
 | Workflow | `.github/workflows/windows-tests.yml`, matriz Python 3.11/3.12/3.13 | Existe CI declarada. Debe ejecutarse sobre el commit que se vaya a entregar. |
 | Evidencia versionada | `evidence/stage0-windows-2026-11-10.json` | Registra un corte anterior: 474 pruebas, 13 omitidas por intérprete, y el run CI 42948215095 en un commit previo. |
-| Otra CI reportada en documentos | Run 42951554253 aparece como verde para Python 3.11–3.13 | Es un resultado histórico citado por los documentos; confirmar en GitHub y no confundirlo con `9c9864e` ni con los cambios locales. |
+| Otra CI reportada en documentos | Run 42951554253 aparece como verde para Python 3.11–3.13 | Es un resultado histórico citado por los documentos; confirmar en GitHub y no confundirlo con el HEAD actual `4461d77` ni con los cambios locales. |
 | `ui_holo.py` | No está presente ni versionado en el árbol actual | En la suite se observó el fallback “Holographic chrome unavailable”; la interfaz usa paneles simples. El módulo cosmético es opcional, pero hoy no está incluido. |
 
-La discrepancia entre `485/12` en esta máquina, `474/13` en el JSON de Etapa 0
-y otras cifras en documentos antiguos es de **cortes distintos**, no evidencia
-de que se hayan ejecutado todas sobre el mismo código. El número válido siempre
-debe citar intérprete, checkout/commit, comando y skips.
+La discrepancia entre `505/13`, `505/12`, `505/13` en esta matriz local,
+`474/13` en el JSON de Etapa 0 y otras cifras antiguas es de **cortes
+distintos**, no evidencia de que se hayan ejecutado todas sobre el mismo código.
+Los skips actuales son: una prueba de symlinks no disponible en el entorno,
+una prueba DOCX que pasa solo en 3.12 por dependencia opcional, una prueba
+Excel omitida por `pandas`/`openpyxl` y diez pruebas UIA opt-in no ejecutadas.
+Los nombres y motivos completos están en [plan_seguimiento.md](./plan_seguimiento.md).
+El número válido siempre debe citar intérprete, árbol/commit, comando y skips.
 
 ### Evidencia histórica que se conserva como antecedente
 
@@ -217,56 +223,47 @@ pruebas, después extraer por responsabilidad con cambios pequeños.
 - La carga de plugins compara hash y requiere confianza/habilitación; es una
   barrera de consentimiento, no aislamiento.
 
-### P0 — Captura visual solicitada por el modelo fuera de una puerta clara
+### P0 — Capturas visuales protegidas; integración real pendiente
 
-`screen_process` está declarado como herramienta del modelo y clasificado como
-`read_or_navigate`. En `main.py`, su rama captura pantalla o cámara y adjunta la
-imagen al intercambio sin pasar por el mismo gate central de `dispatch`; hay
-un cooldown de cuatro segundos, pero eso no representa consentimiento ni
-indica al usuario que la pantalla se va a transmitir. Para cámara se activa el
-stream UI; para la ruta de pantalla no se observó un indicador equivalente.
+Las rutas de captura revisadas requieren una confirmación humana en el HUD o
+un grant vigente ligado a la misma tarea; la petición del usuario por sí sola
+no autoriza compartir una imagen con Gemini. `screen_process` exige aprobación
+para cámara y admite un grant exacto solo para pantalla. `screen_find` limita
+el permiso al hash de la tarea, y las rutas locales de `computer_control` y
+`browser_control` guardan en un destino elegido explícitamente sin transmitir
+la imagen. `screen_debug` informa el proveedor antes de capturar/enviar y
+limpia su archivo temporal.
 
-**Riesgo:** contenido privado puede llegar al proveedor como parte de una
-llamada de herramienta que el modelo pidió, sin aprobación visible específica
-ni una política de tarea/retención completa.
+El indicador identifica la fuente y el destino antes de leer la imagen; las
+rutas comprobadas consultan la señal de parada antes de capturar o transmitir.
+Las pruebas unitarias cubren aprobación, cancelación, parada, orden del
+indicador y transmisión. La suite completa del árbol actual pasó localmente en
+Python 3.11/3.12/3.13.
 
-**Estado:** pendiente de corregir. Mientras tanto, deshabilitar captura
-autónoma/proactiva o exigir un consentimiento explícito del usuario antes de
-capturar. La captura que el usuario pide directamente y la que solicita el
-modelo deben tratarse de forma distinguible.
+**Estado:** corregido y probado a nivel unitario. No se ejecutó la integración
+UIA opt-in ni una inspección visual manual del HUD, no se verificó un proveedor
+real y no hay CI sobre un commit integrado. Por ello, la aceptación de extremo
+a extremo y la declaración de “100 % cerrado” siguen abiertas.
 
-### P0 — Grant de pantalla con objetivo demasiado amplio y duración mal descrita
+### P0 — Permisos de captura persistentes y delimitados
 
-`core/session_grants.py` admite un único scope:
-`(share_screen_search, Gemini, active_screen)`. `_session_grant_for` autoriza
-`computer_control/screen_find` con ese scope sin comparar los argumentos,
-ventana, tarea o destino de la captura. El permiso permite una búsqueda sobre
-la pantalla activa en posteriores llamadas mientras siga válido.
+`core/session_grants.py` almacena grants locales en JSON versionado y con
+escritura atómica, vinculados a un perfil local y a un hash normalizado de la
+tarea. La capacidad y el proveedor forman parte del alcance; los registros
+inválidos o de otro perfil fallan cerrados. El vencimiento es fijo a 30 días y
+no se desliza por uso. El HUD muestra el alcance, plazo y uso reciente, permite
+revocar un permiso o todos, y avisa que el grant se conserva aunque falle la
+operación aprobada. Las decisiones de concesión son tipadas; texto no confiable
+no puede crear un grant. La UI no sincroniza permisos entre perfiles/equipos.
 
-El código fija `SESSION_GRANT_TTL_SECONDS` a **una hora**. Sin embargo, la UI
-describe el permiso como vigente “hasta que se revoque o cierre MARK” y “no
-expira por sí solo”. La tarjeta puede mostrar un contador, pero el texto
-principal y el comportamiento no coinciden. El grant tampoco lleva ID de tarea
-o sesión Gemini, no hay auditoría específica de creación/uso/revocación y no se
-ha demostrado un indicador de captura.
+Las pruebas cubren persistencia tras recarga del almacén, aislamiento de
+perfil, expiración exacta, alcance, uso, revocación y auditoría metadata-only.
+Los eventos recientes son metadata-only y acotados en memoria; los metadatos de
+uso del grant activo se persisten.
 
-**Riesgo:** la persona puede otorgar una duración y alcance distintos de los
-que realmente presenta el producto; una sesión activa puede seguir permitiendo
-capturas que no corresponden a la tarea original.
-
-**Decisión de producto acordada durante esta sesión:** recordar permisos
-específicos entre reinicios por 30 días, con expiración fija (no deslizante),
-revocación visible y alcance de capacidad/proveedor/objetivo. Las acciones de
-alto impacto siempre conservan confirmación por operación. La captura no se
-habilita en segundo plano y requiere indicador y contexto de tarea. No se
-sincronizan grants entre equipos/perfiles.
-
-**Estado técnico:** pendiente P0; el código sigue siendo solo en memoria y
-expira a la hora. No afirmar que MARK ya recuerda permisos al reiniciar. La
-implementación debe incluir almacenamiento local versionado/atómico, invalidar
-registros malformados y separar autorización persistente de tokens de aprobación
-de plan. No migrar automáticamente el scope antiguo `active_screen` a un
-permiso más amplio.
+**Estado:** implementado y probado localmente. Falta la aceptación visual/UIA
+del flujo del HUD y CI integrada; no se presume probado mediante reinicio real
+de aplicación, otra cuenta de Windows o proveedor externo.
 
 ### P1 — Planes no muestran efecto real por paso
 
@@ -444,14 +441,14 @@ borrado explícitos de configuración.
 1. **Plataforma objetivo:** ¿Windows primero con el rango Python 3.11–3.13, o
    soporte multiplataforma como objetivo activo? Hoy la evidencia fuerte es
    Windows y fixtures UIA.
-2. **Modelo de captura:** ¿pantalla/cámara solo bajo petición explícita del
-   usuario, o también a petición del modelo dentro de tareas aprobadas? La
-   recomendación es empezar solo por petición del usuario.
-3. **Permisos reutilizables — decisión tomada:** recordarlos entre reinicios
-   durante 30 días, con alcance exacto, revocación visible y aprobación humana.
-   Las acciones de alto impacto siguen confirmándose por operación. No está
-   implementado todavía; el código actual solo conserva un grant en memoria por
-   una hora para `screen_find`.
+2. **Modelo de captura — implementado:** las llamadas de herramienta, incluso
+   las derivadas de una petición del usuario, usan la misma puerta de
+   consentimiento o un permiso persistente exacto; no hay captura automática
+   sin una de esas decisiones.
+3. **Permisos reutilizables — implementado localmente:** permisos por perfil
+   durante 30 días, alcance exacto, revocación visible y aprobación humana.
+   Las acciones de alto impacto mantienen su confirmación por operación. La
+   integración visual/UIA aún no se ha validado en una sesión real.
 4. **Plugins externos:** ¿basta confianza explícita en proceso para plugins
    escritos por el usuario, o se necesita sandbox antes de aceptar código de
    terceros? No confundir los dos casos.
@@ -471,8 +468,10 @@ de argumentos, política fail-closed, confirmación, undo, resultados tipados y
 pruebas es reutilizable. Las integraciones deben crecer con adapters
 específicos, permisos mínimos y evidencia real acotada.
 
-No declarar “todo P0/P1 cerrado” ni “control universal” mientras la captura
-visual y los grants no tengan contrato verificable, los planes no expliquen
+Los P0 de captura y grants están implementados y cubiertos por pruebas locales,
+pero su aceptación integral sigue abierta por la falta de UIA/validación visual
+y CI integrada sobre un commit. No declarar “todo P0/P1 cerrado” ni “control
+universal” mientras esas puertas sigan abiertas, los planes no expliquen
 efectos por paso y la mensajería continúe sin resultado independiente. No
 habilitar uso sensible desatendido a partir de tests sintéticos.
 

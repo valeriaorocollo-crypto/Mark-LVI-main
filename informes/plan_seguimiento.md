@@ -29,12 +29,13 @@ automatización administrativa genérica.
 
 | Evidencia | Estado | Uso correcto |
 |---|---|---|
-| Suite local ejecutada durante esta consolidación | Python 3.12.10; 485 pruebas; 0 fallos; 0 errores; 12 omitidas | Evidencia actual de este checkout; documentar la razón de cada skip antes de cerrar gates que dependen de él. |
+| Suite local del árbol actual | Python 3.11/3.12/3.13; 505 pruebas por versión; 0 fallos; 0 errores; 13/12/13 omitidas | Ejecutada sobre el mismo árbol de trabajo local, todavía sin commit. Los skips están clasificados abajo; no cuentan como aprobados. |
 | `evidence/stage0-windows-2026-11-10.json` | Evidencia anterior: 474 tests, 13 skips por cada versión 3.11/3.12/3.13; incluye run 42948215095 | Antecedente; no sustituye un run de la revisión actual. |
-| Run 42951554253 | Documentado como verde para Python 3.11–3.13 y commit `2d21993...` | Confirmar estado/artefactos en GitHub y si el checkout corresponde; no atribuirlo a `9c9864e`. |
+| Run 42951554253 | Documentado como verde para Python 3.11–3.13 y commit `2d21993...` | Referencia histórica de otro commit; no atribuirlo al HEAD actual `4461d77`. |
 | Workflow Windows | Existe `.github/workflows/windows-tests.yml` con matriz 3.11/3.12/3.13 | Ejecutar después de corregir y subir un commit revisable. |
-| HEAD local | `9c9864e`; hay modificaciones locales en `setup.py`, `ui.py` y documentos | No descartar ni sobrescribir cambios no relacionados; la próxima evidencia debe identificar commit y estado de árbol. |
-| UI holográfica | `ui_holo.py` no existe en el árbol y no está versionado; unittest observó fallback | Si se desea ese aspecto, reintroducirlo como cambio separado y probado; la ejecución base debe funcionar sin él. |
+| HEAD y árbol local | HEAD `4461d77bd108ec49794ff08c8d75c45c2a1b96fe`; árbol sucio con cambios locales y de esta tarea | Las pruebas identifican el HEAD base y se ejecutaron sobre el árbol modificado; no se atribuyen a un commit integrado. |
+| Validaciones locales adicionales | `compileall`, `setup.py --dry-run` y `pip check` pasan en Python 3.11/3.12/3.13 | No sustituyen CI ni una instalación limpia. |
+| UI holográfica | `ui_holo.py` no existe ni está versionado; la suite observó el fallback | El arranque funciona con paneles simples; reintroducir el módulo sería un cambio separado. |
 
 ### Reglas de trabajo
 
@@ -55,13 +56,13 @@ automatización administrativa genérica.
 
 | Orden | Etapa | Prioridad | Estado al corte | Bloquea |
 |---:|---|---|---|---|
-| 0 | Línea base, árbol y CI reproducibles | P0 de gestión | Parcial: una suite local actual; artefactos de CI anteriores | Toda declaración de release |
-| 1 | Consentimiento de captura y permisos de pantalla | P0 privacidad | Pendiente | Captura automática/proactiva y grants nuevos |
+| 0 | Línea base, árbol y CI reproducibles | P0 de gestión | Parcial: matriz local verde; snapshot previo y CI integrada pendientes | Toda declaración de release |
+| 1 | Consentimiento de captura y permisos de pantalla | P0 privacidad | Implementado y probado localmente; aceptación UIA/visual pendiente | Uso sensible desatendido y declaración de cierre integral |
 | 2 | Efectos visibles de planes | P1 alto | Parcial: preview y aprobación existen, efecto no representa operación | Habilitar planes con efectos no triviales |
 | 3 | Archivos, undo e interrupciones | P1 alto | Base implementada; matriz completa pendiente | Escrituras/borrados desatendidos |
 | 4 | Mensajería, Steam y acciones de escritorio reales | P1 alto | Fail-closed parcial; resultados reales incompletos | Envío/instalación automatizados |
 | 5 | Dashboard, plugins y confianza | P1 alto | Varias mitigaciones implementadas; identidad remota/sandbox pendientes | Uso remoto y plugins de terceros |
-| 6 | Dependencias, pruebas y diagnóstico | P1/P2 | CI y tests existen; matrix actual, reproducibilidad y warnings pendientes | Publicar compatibilidad |
+| 6 | Dependencias, pruebas y diagnóstico | P1/P2 | Matriz local 3.11–3.13 verde; CI integrada, reproducibilidad de instalación y warnings pendientes | Publicar compatibilidad |
 | 7 | Integraciones por aplicación | P2, bajo gate | Pilotos; no cerrar por una ejecución sintética | Expansión de capacidades |
 | 8 | Privacidad, manual, onboarding y UX | P2 | Parcial/no consolidado | Incorporación de usuarios externos |
 | 9 | Métricas, modularización e instalador | P3 | Ideas, no requisito inmediato | Escalado/distribución |
@@ -78,31 +79,51 @@ resultados.
 
 ### Tareas
 
-- [ ] Registrar el hash de HEAD y `git status --short` antes de cambios.
-- [ ] Acordar cómo se integran los cambios locales preexistentes en `setup.py`,
-  `ui.py` y la documentación; no revertirlos sin autorización.
-- [x] Ejecutar unittest completo localmente: 485 casos, 0 fallos, 0 errores,
-  12 omitidos en Python 3.12.10.
-- [ ] Identificar cada uno de los 12 skips (prueba, razón, si existe ejecución
-  alterna/opt-in) y clasificarlos: ambiente, dependencia opcional o función no
-  validada.
-- [ ] Ejecutar en Python 3.11 y 3.13 del árbol que se vaya a entregar.
-- [ ] Ejecutar `python -m compileall -q .`, `python setup.py --dry-run` y
-  `python -m pip check` en la matriz; registrar intérprete/resultado.
+- [ ] Registrar el hash de HEAD y `git status --short` antes de cambios. El
+  snapshot previo no quedó conservado como artefacto; el HEAD base y el estado
+  actual se registran arriba/abajo sin reconstruir el pasado.
+- [ ] Acordar cómo se integran los cambios locales preexistentes; se
+  conservaron, sin commit ni reversión.
+- [x] Ejecutar unittest completo en Python 3.11, 3.12 y 3.13: 505 pruebas por
+  versión, 0 fallos y 0 errores; 13, 12 y 13 skips, respectivamente.
+- [x] Clasificar los skips: `test_stale_cleanup_does_not_follow_or_remove_symlinks`
+  se omite porque el entorno no permite crear enlaces simbólicos (3.11–3.13);
+  `test_local_docx_search_includes_table_cells_without_writing` se omite por
+  falta de `python-docx` en 3.11 y 3.13 (pasa en 3.12);
+  `test_local_excel_preview_reads_all_supported_sheets_without_writing` se
+  omite por dependencias opcionales `pandas`/`openpyxl` en las tres versiones.
+  Los otros 10 skips son pruebas opt-in de UI Automation: se omiten porque no
+  se definió `MARK_RUN_UIA_INTEGRATION=1` y crean/interactúan con ventanas:
+  `test_focus_control_on_local_synthetic_window`,
+  `test_uia_focus_selector_matrix_measures_exact_and_near_miss_targets`,
+  `test_focus_control_stops_when_window_disappears`,
+  `test_focus_window_activates_local_synthetic_window`,
+  `test_uia_activate_window_verifies_local_synthetic_window`,
+  `test_uia_invoke_control_reports_closed_window_as_unverified`,
+  `test_uia_invoke_control_rejects_wrong_selector_without_effect`,
+  `test_uia_invoke_control_rejects_duplicate_windows`,
+  `test_task_plan_activates_and_verifies_synthetic_window` y
+  `test_task_plan_writes_and_reads_synthetic_edit`. No equivalen a pruebas
+  aprobadas ni a validación de aplicaciones reales.
+- [x] Ejecutar unittest en Python 3.11 y 3.13 del mismo árbol local.
+- [x] Ejecutar `python -m compileall -q .`, `python setup.py --dry-run` y
+  `python -m pip check` con Python 3.11, 3.12 y 3.13; los tres comandos pasan
+  en cada intérprete.
 - [ ] Lanzar workflow Windows desde el commit integrado y guardar links/
   artefactos por intérprete; confirmar que los runs 42948215095 y 42951554253
-  son referencias históricas.
-- [ ] Registrar la condición del módulo UI opcional `ui_holo.py`. Si se decide
-  reintroducirlo, agregarlo al árbol/versionado y una prueba de fallback.
-- [ ] Añadir al artefacto únicamente versiones, estados, conteos y errores
-  redactados; nada de secretos, texto de usuario, capturas ni rutas personales.
+  son referencias históricas. No hay commit integrado de este árbol.
+- [x] Registrar que el módulo UI opcional `ui_holo.py` no está en el árbol y
+  que se observó el fallback funcional; no se decidió reintroducirlo.
+- [x] Documentar solo versiones, estados, conteos y motivos técnicos de skips;
+  no se incorporaron secretos, texto de usuario, capturas ni rutas personales.
 
 ### Salida
 
 - La matriz 3.11/3.12/3.13 del mismo commit está verde o cada fallo queda
   asignado y explicado.
 - Los skips se explican y no se presentan como aprobados.
-- Existe una línea base de CI reproducible que el compañero puede seguir.
+- La línea base local está registrada; la CI reproducible del commit integrado
+  sigue abierta.
 
 ## 5. Etapa 1 — consentimiento de pantalla/cámara y grants
 
@@ -131,60 +152,71 @@ resultados.
   Cada uso debe tener una tarea o petición clara, mostrar un indicador antes de
   transmitir y respetar el alcance concedido. Si no se puede fijar el objetivo,
   se pregunta otra vez.
-- La persistencia entre reinicios aún **no está implementada**. Hasta que
-  Etapa 1 cierre sus criterios, no debe prometerse esta conducta ni ampliarse
-  el grant actual.
+- El almacén local persistente, el vencimiento fijo, el alcance por tarea y la
+  revocación están implementados. La aceptación integral sigue pendiente de
+  pruebas opt-in de UIA y validación visual del HUD en una sesión real.
 
 ### 1A. Captura del modelo
 
-- [ ] Inventariar todas las entradas a `_capture_screen` y `_capture_camera`,
+- [x] Inventariar las entradas a `_capture_screen` y `_capture_camera`,
   incluida `screen_process`, `screen_find`, herramientas de código y debug.
-- [ ] Distinguir en el despacho “usuario pidió ver” de “modelo pidió captura”.
-- [ ] Bloquear captura solicitada por el modelo hasta que exista consentimiento
+- [x] No existe una ruta de captura por petición directa que salte el gate:
+  las llamadas de herramienta pasan por la misma aprobación HUD o por un
+  permiso persistente exacto. Una petición del usuario por sí sola no concede
+  compartir la imagen con el proveedor.
+- [x] Bloquear captura solicitada por el modelo hasta que exista consentimiento
   humano o una tarea explícita cubierta por un permiso persistente exacto.
-- [ ] Mostrar indicador de captura/transmisión antes de capturar; cubrir
+- [x] Mostrar indicador de captura/transmisión antes de capturar; cubrir
   también pantalla, no solo el stream de cámara.
-- [ ] Incluir fuente/alcance en el panel (“pantalla completa”, ventana o región)
-  y proveedor que recibirá la imagen.
-- [ ] Permitir detener la operación y comprobar que el siguiente paso no se
+- [x] Incluir fuente/alcance en el panel y el proveedor que recibirá la imagen;
+  la captura local no se transmite y exige destino local explícito.
+- [x] Permitir detener la operación y comprobar que el siguiente paso no se
   ejecuta.
-- [ ] Mantener capturas en memoria; comprobar limpieza al fallar, expirar o
-  cancelar. Documentar las capturas persistentes de debug por separado.
-- [ ] Definir cooldown y límites como control de abuso adicional, nunca como
+- [x] Mantener en memoria las capturas enviadas; cubrir fallos/cancelación y
+  eliminar el archivo temporal de `screen_debug`. No se guarda una captura de
+  debug persistente; las capturas locales solo se escriben en el destino
+  explícito elegido para esa operación.
+- [x] Mantener cooldown y límites como control de abuso adicional, nunca como
   sustituto del consentimiento.
 
 ### 1B. Permiso reutilizable
 
-- [ ] Cambiar el almacén en memoria por un almacén local persistente, versionado
+- [x] Cambiar el almacén en memoria por un almacén local persistente, versionado
   y escrito atómicamente. Al leer un registro inválido, expirado o de otra
   cuenta/perfil, ignorarlo y fallar cerrado.
-- [ ] Persistir solo metadatos de permiso: ID, capacidad, integración,
+- [x] Persistir solo metadatos de permiso: ID, capacidad, integración,
   objetivo/recurso, fecha concedida, fecha de vencimiento, etiqueta revisable y
   estado de revocación; no guardar argumentos sensibles ni contenido capturado.
-- [ ] Implementar vencimiento fijo a 30 días desde la aprobación; no extenderlo
+- [x] Implementar vencimiento fijo a 30 días desde la aprobación; no extenderlo
   por uso. Renovar requiere una nueva decisión explícita en el HUD.
-- [ ] Migrar o eliminar el grant actual de `screen_find` si su alcance no puede
+- [x] Migrar o eliminar el grant actual de `screen_find` si su alcance no puede
   delimitarse; nunca convertir automáticamente el antiguo
   `active_screen` en una autorización más amplia.
-- [ ] Mantener en memoria los tokens de aprobación de planes y las sesiones
+- [x] Mantener en memoria los tokens de aprobación de planes y las sesiones
   efímeras; persistir únicamente grants explícitos, no una tarea aprobada para
   ejecución futura.
-- [ ] Revocar automáticamente al cambiar la cuenta/perfil dueño del almacén;
+- [x] Revocar automáticamente al cambiar la cuenta/perfil dueño del almacén;
   mantener el permiso entre reinicios de MARK en el mismo perfil.
-- [ ] Mostrar permiso activo, alcance, caducidad y uso reciente; ofrecer
+- [x] Mostrar permiso activo, alcance, caducidad y uso reciente; ofrecer
   “revocar seleccionado” y “revocar todo”.
-- [ ] Mostrar el botón de permiso recordado con su vigencia (“Recordar este
+- [x] Mostrar el botón de permiso recordado con su vigencia (“Recordar este
   permiso por 30 días”), separado de “Aprobar esta vez”; no presentar un
   permiso persistente como un grant temporal de una sola sesión.
-- [ ] Proteger los handlers de alto impacto para que grants nunca omitan su
+- [x] Proteger los handlers de alto impacto para que grants nunca omitan su
   confirmación por operación.
-- [ ] Registrar solo metadatos de creación/uso/revocación; no guardar imágenes,
+- [x] Registrar solo metadatos de creación/uso/revocación; no guardar imágenes,
   contenido ni argumentos sensibles.
-- [ ] Usar una decisión tipada de HUD; asegurar que texto, red o salida del
+- [x] Usar una decisión tipada de HUD; asegurar que texto, red o salida del
   modelo nunca puedan conceder permiso.
-- [ ] Si la persona concede y la primera operación falla, conservar el permiso
-  solo si el HUD dejó claro que la concesión se guarda aunque la operación no
-  se complete; de lo contrario, borrar la concesión en el fallo.
+- [x] El HUD aclara que el permiso se guarda aunque la operación falle; la
+  elección de “recordar” precede a la ejecución y no se revierte ante un fallo.
+
+**Estado de aceptación:** implementación y pruebas unitarias completadas en el
+árbol local. La prueba de timeout/cancelación, las rutas de captura y el almacén
+de grants pasan; también pasan las suites de la matriz local. No cerrar la
+aceptación integral hasta ejecutar la CI sobre un commit integrado y la prueba
+opt-in/visual del HUD en un entorno autorizado. Las 10 pruebas UIA omitidas no
+se consideran aprobadas.
 
 ### Pruebas de salida
 
@@ -523,10 +555,10 @@ capacidad bloqueada.
 
 1. Confirmar con el compañero el árbol de trabajo y ejecutar CI sobre el commit
    que se entregará.
-2. Diseñar y probar el gate de `screen_process` antes de cambiar cualquier
-   otro conector.
-3. Resolver formalmente alcance/duración del grant `screen_find`; alinear
-   política y HUD.
+2. Ejecutar las 10 pruebas opt-in UIA y la aceptación visual del HUD en un
+   entorno autorizado; adjuntar evidencia sin datos sensibles.
+3. Validar el flujo de grants en el HUD, incluido reinicio y perfil, y mantener
+   la política de tarea exacta/30 días ya implementada.
 4. Mostrar efecto por paso en los planes y validar argumentos al ejecutar.
 5. Conservar mensajería genérica bloqueada y no repetir WhatsApp ambiguo.
 6. Validar panel TLS/remoto y plugin trust en pruebas controladas.
