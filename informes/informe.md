@@ -100,8 +100,8 @@ producto está en [ideas.md](./ideas.md).
 
 | Dato | Resultado actual | Interpretación |
 |---|---|---|
-| Rama/HEAD base | `d2fc6470011d0a6b08bc696bb51f2daa30acb253` | La CI, UIA y suite local cubren este commit integrado. |
-| Cambios locales | Solo estos dos informes están modificados después de la CI | La mejora de ajuste de texto del panel y su prueba están integradas; el snapshot anterior a los cambios originales no quedó conservado como artefacto. |
+| Commit de código validado | `d2fc6470011d0a6b08bc696bb51f2daa30acb253` | La CI, UIA y suite local cubren este commit integrado. |
+| Commit documental | `a32149b5069464a680acc8c8e0d8391e9da7e224` | Actualiza estos dos informes sin cambiar código ni pruebas; la CI del commit documental también pasó en Python 3.11–3.13 ([run 42987653025](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42987653025)). |
 | Código Python | 129 archivos en el árbol examinado, contando `tests/` | Recuento de archivos, no medida de madurez. |
 | Pruebas | 51 archivos de prueba encontrados | Hay cobertura amplia, pero también skips y dependencias de entorno. |
 | Ejecución local de unittest | Python 3.11/3.12/3.13: 506 pruebas por versión, 0 fallos, 0 errores; 13/12/13 omitidas | Los skips no cuentan como aprobados; las pruebas incluyen regresión de ajuste de texto del panel de permisos. |

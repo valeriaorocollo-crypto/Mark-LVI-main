@@ -35,7 +35,8 @@ automatización administrativa genérica.
 | `evidence/stage0-windows-2026-11-10.json` | Evidencia anterior: 474 tests, 13 skips por cada versión 3.11/3.12/3.13; incluye run 42948215095 | Antecedente; no sustituye un run de la revisión actual. |
 | Run 42986772997 | Verde en Python 3.11–3.13 para commit `d2fc6470011d0a6b08bc696bb51f2daa30acb253` | [Workflow de GitHub Actions](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42986772997); artefactos `windows-ci-evidence-py3.11`, `windows-ci-evidence-py3.12` y `windows-ci-evidence-py3.13`. |
 | Run 42983995841 | Verde en Python 3.11–3.13 para commit base `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c` | Run anterior a la mejora de legibilidad; el run 42986772997 valida el ajuste. |
-| HEAD y árbol local | HEAD `d2fc6470011d0a6b08bc696bb51f2daa30acb253`; solo estos informes están modificados después de la CI | El código y la prueba de regresión están integrados y el workflow está verde; los informes se sincronizan con el resultado. |
+| Commit de código y pruebas | `d2fc6470011d0a6b08bc696bb51f2daa30acb253` | La CI, UIA y suite local validan este commit; no se modificó código ni pruebas en la actualización documental. |
+| Commit documental | `a32149b5069464a680acc8c8e0d8391e9da7e224` | Solo actualizó estos informes; su workflow también pasó en Python 3.11–3.13 ([run 42987653025](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42987653025)). |
 | Validaciones locales adicionales | `compileall`, `setup.py --dry-run` y `pip check` pasan en Python 3.11/3.12/3.13 | No sustituyen CI ni una instalación limpia. |
 | UI holográfica | `ui_holo.py` no existe ni está versionado; la suite observó el fallback | El arranque funciona con paneles simples; reintroducir el módulo sería un cambio separado. |
 
