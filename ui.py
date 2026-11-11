@@ -67,17 +67,7 @@ except Exception:      # pragma: no cover — HUD must never die over cosmetics
 # lives in its own module so ui.py does not grow past what one file should
 # hold. A missing or broken ui_holo must never take the assistant down with
 # it — the HUD falls back to plain panels and everything still works.
-try:
-    from ui_holo import (
-        CapabilityInspector,
-        HoloBootOverlay,
-        HoloFrame,
-        HoloGauge,
-        HoloSubsystemPanel,
-        ReactorCore,
-        tech_font,
-    )
-    HAVE_HOLO = True
+
 except Exception as _holo_error:      # noqa: BLE001 - reported, never fatal
     CapabilityInspector = HoloBootOverlay = None
     HoloFrame = HoloGauge = HoloSubsystemPanel = ReactorCore = None

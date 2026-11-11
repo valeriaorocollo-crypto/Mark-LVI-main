@@ -126,9 +126,6 @@ repetición de efectos.
 
 ### F. Manual consultable desde la interfaz y la voz
 
-Inspiración directa del manual empaquetado en `AAAA`: una guía por temas que el
-usuario pueda abrir o consultar con el asistente.
-
 - Qué puede hacer cada función y qué no.
 - Configuración de micrófono, voz, memoria, plugins, proveedores y acceso
   remoto.
