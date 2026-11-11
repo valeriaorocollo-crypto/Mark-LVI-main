@@ -33,9 +33,9 @@ automatización administrativa genérica.
 | UI Automation | 10/10 pruebas opt-in pasaron en Windows/Python 3.12 | Ventanas sintéticas; no equivale a probar una aplicación real. |
 | Aceptación visual local | Banners, controles tipados, captura cancelable y flujo de concesión/revocación | Revisado con datos sintéticos y almacén JSON temporal; no se capturó ni transmitió imagen y no se tocó el almacén real. El panel ahora ajusta el texto sin barra horizontal. |
 | `evidence/stage0-windows-2026-11-10.json` | Evidencia anterior: 474 tests, 13 skips por cada versión 3.11/3.12/3.13; incluye run 42948215095 | Antecedente; no sustituye un run de la revisión actual. |
-| Run 42983995841 | Verde en Python 3.11–3.13 para commit `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c` | [Workflow de GitHub Actions](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42983995841); es anterior al ajuste local de ajuste de texto y no lo valida. |
-| Workflow Windows | Run 42983995841 pasó con matriz 3.11/3.12/3.13 | Validación completada para el commit `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c`. |
-| HEAD y árbol local | HEAD `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c`; `ui.py`, `tests/test_session_grants.py` y estos informes están modificados localmente | Suite completa y UIA pasaron sobre el árbol actual; la CI del ajuste de UI aún no se ha ejecutado. |
+| Run 42986772997 | Verde en Python 3.11–3.13 para commit `d2fc6470011d0a6b08bc696bb51f2daa30acb253` | [Workflow de GitHub Actions](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42986772997); artefactos `windows-ci-evidence-py3.11`, `windows-ci-evidence-py3.12` y `windows-ci-evidence-py3.13`. |
+| Run 42983995841 | Verde en Python 3.11–3.13 para commit base `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c` | Run anterior a la mejora de legibilidad; el run 42986772997 valida el ajuste. |
+| HEAD y árbol local | HEAD `d2fc6470011d0a6b08bc696bb51f2daa30acb253`; solo estos informes están modificados después de la CI | El código y la prueba de regresión están integrados y el workflow está verde; los informes se sincronizan con el resultado. |
 | Validaciones locales adicionales | `compileall`, `setup.py --dry-run` y `pip check` pasan en Python 3.11/3.12/3.13 | No sustituyen CI ni una instalación limpia. |
 | UI holográfica | `ui_holo.py` no existe ni está versionado; la suite observó el fallback | El arranque funciona con paneles simples; reintroducir el módulo sería un cambio separado. |
 
@@ -58,13 +58,13 @@ automatización administrativa genérica.
 
 | Orden | Etapa | Prioridad | Estado al corte | Bloquea |
 |---:|---|---|---|---|
-| 0 | Línea base, árbol y CI reproducibles | P0 de gestión | Suite local actual y UIA verdes; CI verde en el commit base, CI del ajuste UI pendiente | Integrar y validar el ajuste actual antes de declarar release |
-| 1 | Consentimiento de captura y permisos de pantalla | P0 privacidad | Tests, CI base, UIA y flujo HUD/permiso sintético aprobados; proveedor real no probado | Uso sensible desatendido y declaración de cierre integral |
+| 0 | Línea base, árbol y CI reproducibles | P0 de gestión | Suite local actual, UIA y CI del commit integrado verdes | Declaraciones de compatibilidad real de aplicaciones aún requieren pruebas de producto |
+| 1 | Consentimiento de captura y permisos de pantalla | P0 privacidad | Tests, CI, UIA y flujo HUD/permiso sintético aprobados; proveedor real no probado | Uso sensible desatendido y declaración de cierre con proveedor real |
 | 2 | Efectos visibles de planes | P1 alto | Parcial: preview y aprobación existen, efecto no representa operación | Habilitar planes con efectos no triviales |
 | 3 | Archivos, undo e interrupciones | P1 alto | Base implementada; matriz completa pendiente | Escrituras/borrados desatendidos |
 | 4 | Mensajería, Steam y acciones de escritorio reales | P1 alto | Fail-closed parcial; resultados reales incompletos | Envío/instalación automatizados |
 | 5 | Dashboard, plugins y confianza | P1 alto | Varias mitigaciones implementadas; identidad remota/sandbox pendientes | Uso remoto y plugins de terceros |
-| 6 | Dependencias, pruebas y diagnóstico | P1/P2 | Matriz local actual verde; CI verde en el commit base, CI del ajuste local pendiente; reproducibilidad y warnings pendientes | Publicar compatibilidad |
+| 6 | Dependencias, pruebas y diagnóstico | P1/P2 | Matriz local actual y CI integrada verdes; reproducibilidad y warnings pendientes | Publicar compatibilidad |
 | 7 | Integraciones por aplicación | P2, bajo gate | Pilotos; no cerrar por una ejecución sintética | Expansión de capacidades |
 | 8 | Privacidad, manual, onboarding y UX | P2 | Parcial/no consolidado | Incorporación de usuarios externos |
 | 9 | Métricas, modularización e instalador | P3 | Ideas, no requisito inmediato | Escalado/distribución |
@@ -81,13 +81,11 @@ resultados.
 
 ### Tareas
 
-- [x] Registrar el HEAD base probado:
-  `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c`. La suite actual corrió con el
-  ajuste local sin integrar; el snapshot anterior a los cambios originales no
-  quedó conservado como artefacto.
-- [x] La implementación P0 anterior quedó integrada en `a4a2ed4`. El ajuste
-  actual de lectura del panel y su prueba están en el árbol local y aún no
-  tienen CI remota.
+- [x] Registrar el commit integrado probado:
+  `d2fc6470011d0a6b08bc696bb51f2daa30acb253`. El snapshot anterior a los
+  cambios originales no quedó conservado como artefacto.
+- [x] La mejora de lectura del panel y su prueba de regresión quedaron
+  integradas y validadas por la matriz CI.
 - [x] Ejecutar unittest completo en Python 3.11, 3.12 y 3.13: 506 pruebas por
   versión, 0 fallos y 0 errores; 13, 12 y 13 skips, respectivamente.
 - [x] Clasificar los skips: `test_stale_cleanup_does_not_follow_or_remove_symlinks`
@@ -116,10 +114,11 @@ resultados.
   `python -m pip check` con Python 3.11, 3.12 y 3.13; los tres comandos pasan
   en cada intérprete.
 - [x] Lanzar workflow Windows desde el commit integrado. Run
-  [42983995841](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42983995841):
+  [42986772997](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42986772997):
   Python 3.11, 3.12 y 3.13 completados con éxito para
-  `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c`. Este run precede el ajuste
-  local del panel, que requiere CI propia.
+  `d2fc6470011d0a6b08bc696bb51f2daa30acb253`. Se publicaron los tres
+  artefactos `windows-ci-evidence-py3.11`, `windows-ci-evidence-py3.12` y
+  `windows-ci-evidence-py3.13`.
 - [x] Registrar que el módulo UI opcional `ui_holo.py` no está en el árbol y
   que se observó el fallback funcional; no se decidió reintroducirlo.
 - [x] Documentar solo versiones, estados, conteos y motivos técnicos de skips;
@@ -127,11 +126,11 @@ resultados.
 
 ### Salida
 
-- La matriz local 3.11/3.12/3.13 está verde para el árbol actual; la CI del
-  commit base está verde y el ajuste local requiere su propio run.
+- La matriz local 3.11/3.12/3.13 y la CI del commit integrado actual están
+  verdes.
 - Los skips se explican y no se presentan como aprobados.
-- La CI del commit base está verde; el ajuste local de UI requiere integración
-  y CI. Los skips descritos no cuentan como aprobados; las 10 pruebas UIA
+- La CI del commit integrado actual está verde. Los skips descritos no cuentan
+  como aprobados; las 10 pruebas UIA
   opt-in pasaron en Windows/Python 3.12 con ventanas sintéticas.
 
 ## 5. Etapa 1 — consentimiento de pantalla/cámara y grants
@@ -223,14 +222,13 @@ resultados.
   elección de “recordar” precede a la ejecución y no se revierte ante un fallo.
 
 **Estado de aceptación:** implementación y suites locales completadas. La CI
-del commit base
-`a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c` pasó en Python 3.11–3.13 (run
-[42983995841](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42983995841)).
-El árbol actual pasó 506 pruebas por versión y las 10 pruebas UIA opt-in
-pasaron en Windows/Python 3.12. El HUD y el flujo de creación, visualización y
-revocación se comprobaron con datos sintéticos y un almacén temporal aislado.
-El ajuste local de texto aún requiere CI; no se probó proveedor real, captura
-real ni perfil de producción.
+del commit `d2fc6470011d0a6b08bc696bb51f2daa30acb253` pasó en Python 3.11–3.13
+(run
+[42986772997](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42986772997)).
+El árbol pasó 506 pruebas por versión; las 10 pruebas UIA opt-in pasaron en
+Windows/Python 3.12. El HUD y el flujo de creación, visualización y revocación
+se comprobaron con datos sintéticos y un almacén temporal aislado. No se probó
+proveedor real, captura real ni perfil de producción.
 
 ### Pruebas de salida
 
@@ -567,16 +565,15 @@ capacidad bloqueada.
 
 ## 16. Prioridades para la siguiente sesión
 
-1. [x] Confirmar la línea base: run 42983995841 pasó en Python 3.11–3.13 para
-   `a4a2ed4`. La suite actual cubre el ajuste local posterior, que requiere CI
-   propia.
+1. [x] Confirmar la CI integrada: run 42986772997 pasó en Python 3.11–3.13
+   para `d2fc647`.
 2. [x] Ejecutar las 10 pruebas opt-in UIA en un entorno autorizado:
    10/10 aprobadas en Windows/Python 3.12 con ventanas sintéticas.
 3. [x] Revisar visualmente el HUD y el flujo de grant: creación desde
    confirmación, persistencia en archivo temporal, visualización, revocación
    individual y total; no se usó el almacén real ni un proveedor.
-4. Integrar y ejecutar CI para el ajuste local del panel de permisos; mantener
-   pendiente la prueba con proveedor/cuenta real.
+4. Mantener pendiente la prueba con proveedor/cuenta real; no ejecutarla sin
+   una cuenta y un entorno de prueba autorizados.
 5. Mostrar efecto por paso en los planes y validar argumentos al ejecutar.
 6. Conservar mensajería genérica bloqueada y no repetir WhatsApp ambiguo.
 7. Validar panel TLS/remoto y plugin trust en pruebas controladas.
