@@ -168,6 +168,19 @@ class SessionGrantTests(unittest.TestCase):
             json.dumps([event.__dict__ for event in events]),
         )
 
+    def test_grants_overlay_wraps_permission_details(self) -> None:
+        from PyQt6.QtWidgets import QApplication
+
+        from ui import SessionGrantsOverlay
+
+        app = QApplication.instance() or QApplication([])
+        overlay = SessionGrantsOverlay()
+        try:
+            self.assertTrue(overlay._items.wordWrap())
+        finally:
+            overlay.close()
+            app.processEvents()
+
 
 if __name__ == "__main__":
     unittest.main()

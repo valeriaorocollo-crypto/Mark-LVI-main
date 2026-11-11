@@ -1,10 +1,15 @@
 # Informe final de situación — MARK LVI
 
 **Fecha de consolidación:** 11 de noviembre de 2026
-**Base examinada:** árbol de trabajo local de `Mark-LVI-main`, commit HEAD
-`4461d77bd108ec49794ff08c8d75c45c2a1b96fe`, más modificaciones locales sin
-commit. La validación indicada abajo se ejecutó sobre ese árbol modificado, no
-sobre un commit integrado.
+**Base examinada:** HEAD `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c` de
+`Mark-LVI-main`, más cambios locales en `ui.py`, `tests/test_session_grants.py`
+y estos informes. La CI
+[42983995841](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42983995841)
+pasó para el commit base; la suite local actual pasó con 506 pruebas en Python
+3.11–3.13. Las 10 pruebas UIA opt-in pasaron en Windows/Python 3.12. La
+inspección visual del HUD y el flujo de permisos se probaron localmente con
+datos sintéticos y almacén temporal; no se usó proveedor, captura real ni
+almacén de permisos de producción. La CI del ajuste actual sigue pendiente.
 
 ## 1. Resumen ejecutivo
 
@@ -25,21 +30,25 @@ Windows, aplicación, cuenta, idioma o escala de pantalla.
 
 Estado actualizado de las prioridades:
 
-1. **P0 privacidad implementado localmente:** las rutas de captura requieren
-   aprobación HUD o un grant exacto de tarea; se muestran fuente/proveedor,
-   indicador y controles de cancelación. La aceptación visual/UIA y la CI
-   integrada siguen pendientes.
+1. **P0 privacidad implementado:** las rutas de captura requieren aprobación
+   HUD o un grant exacto de tarea; se muestran fuente/proveedor, indicador y
+   controles de cancelación. La UIA, inspección visual local y flujo de grant
+   con almacén aislado pasaron. La CI verde corresponde al commit base; falta
+   ejecutarla sobre el ajuste de lectura del panel.
 2. **P0 grants implementado localmente:** permisos persistentes por perfil,
    alcance hash de tarea, vencimiento fijo de 30 días, uso/revocación visibles
-   y rechazo seguro ante almacén inválido. No se debe declarar validación de
-   extremo a extremo sin probar HUD/UIA y CI sobre un commit integrado.
+   y rechazo seguro ante almacén inválido. UIA sintética y el flujo local de
+   creación/visualización/revocación con almacén temporal pasaron. La CI del
+   ajuste de UI está pendiente; no se usó un proveedor real ni el almacén real.
 3. Mostrar los efectos reales de cada paso del plan. El campo `effect` se
    calcula hoy a partir del estado `"started"`/`"unknown"` y la vista previa no
    presenta efectos por paso.
 4. Mantener bloqueadas las integraciones externas cuyo resultado real no está
    verificado, especialmente envío de mensajes. No repetir acciones ambiguas.
-5. La matriz local completa pasó en Python 3.11–3.13; falta ejecutar CI remota
-   sobre un commit integrado. Las ejecuciones remotas citadas son históricas.
+5. La matriz local completa pasó en Python 3.11–3.13. La CI remota pasó sobre
+   el commit base `a4a2ed4`, antes del ajuste actual de UI, que aún necesita su
+   propio run. No atribuir a las pruebas sintéticas validación de aplicaciones
+   reales.
 
 La hoja de ruta de ejecución y puertas está en
 [plan_seguimiento.md](./plan_seguimiento.md). El catálogo de oportunidades de
@@ -72,8 +81,9 @@ producto está en [ideas.md](./ideas.md).
 - No se inició sesión en proveedores, no se enviaron mensajes, no se hicieron
   compras/instalaciones y no se cambiaron firewall o ajustes de Windows.
 - No se probó cada aplicación real ni todos los dispositivos de audio.
-- Se ejecutó la matriz local en Python 3.11/3.12/3.13; no se validó una
-  instalación limpia ni se ejecutaron los tests UIA opt-in en este corte.
+- Se ejecutó la matriz local en Python 3.11/3.12/3.13 y las 10 pruebas UIA
+  opt-in pasaron con ventanas sintéticas; no se validó una instalación limpia
+  ni aplicaciones reales.
 - Los resultados guardados en la documentación y en `evidence/` se conservan
   como antecedentes, pero no se presumen como una ejecución del checkout
   actual.
@@ -90,24 +100,27 @@ producto está en [ideas.md](./ideas.md).
 
 | Dato | Resultado actual | Interpretación |
 |---|---|---|
-| Rama/HEAD base | `4461d77bd108ec49794ff08c8d75c45c2a1b96fe` | La evidencia de esta sesión cubre el árbol local modificado sobre este HEAD; aún no existe commit integrado de esos cambios. |
-| Cambios locales | Árbol sucio, con modificaciones preexistentes y de esta tarea | No asumir que están publicados ni descartar cambios ajenos. El snapshot anterior a los cambios no quedó conservado como artefacto. |
+| Rama/HEAD base | `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c` | La CI cubre este commit; la UIA y la suite local actual cubren el árbol con el ajuste local. |
+| Cambios locales | `ui.py`, `tests/test_session_grants.py` y los dos informes están modificados | El ajuste hace envolver los detalles de permisos para evitar recorte horizontal; el snapshot anterior a los cambios originales no quedó conservado como artefacto. |
 | Código Python | 129 archivos en el árbol examinado, contando `tests/` | Recuento de archivos, no medida de madurez. |
 | Pruebas | 51 archivos de prueba encontrados | Hay cobertura amplia, pero también skips y dependencias de entorno. |
-| Ejecución local de unittest | Python 3.11/3.12/3.13: 505 pruebas por versión, 0 fallos, 0 errores; 13/12/13 omitidas | Corrida sobre el mismo árbol de trabajo local sin commit. Los skips no cuentan como aprobados. |
+| Ejecución local de unittest | Python 3.11/3.12/3.13: 506 pruebas por versión, 0 fallos, 0 errores; 13/12/13 omitidas | Los skips no cuentan como aprobados; las pruebas incluyen regresión de ajuste de texto del panel de permisos. |
+| UI Automation | 10/10 pruebas opt-in aprobadas en Windows/Python 3.12 | Ventanas sintéticas locales; no valida aplicaciones reales. |
+| HUD y grants | Banners, controles tipados, grant, panel y revocaciones probados localmente | Almacén temporal aislado; no se capturó/transmitió imagen ni se modificó el almacén real. |
 | Validaciones locales adicionales | `compileall`, `setup.py --dry-run` y `pip check` pasan en las tres versiones | No sustituyen CI ni instalación limpia. |
 | Warnings vistos | Aviso deprecado `Starlette TestClient`/`httpx`, aviso `pynvml` y mensajes UIA/asyncio/COM del entorno | No hicieron fallar la suite; no se ocultaron ni se consideran resueltos. |
-| Workflow | `.github/workflows/windows-tests.yml`, matriz Python 3.11/3.12/3.13 | Existe CI declarada. Debe ejecutarse sobre el commit que se vaya a entregar. |
+| Workflow | Run 42983995841, matriz Python 3.11/3.12/3.13, éxito en las tres versiones | [GitHub Actions](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42983995841), commit base `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c`; aún no valida el cambio local de UI. |
 | Evidencia versionada | `evidence/stage0-windows-2026-11-10.json` | Registra un corte anterior: 474 pruebas, 13 omitidas por intérprete, y el run CI 42948215095 en un commit previo. |
-| Otra CI reportada en documentos | Run 42951554253 aparece como verde para Python 3.11–3.13 | Es un resultado histórico citado por los documentos; confirmar en GitHub y no confundirlo con el HEAD actual `4461d77` ni con los cambios locales. |
+| Otra CI reportada en documentos | Run 42951554253 aparece como verde para Python 3.11–3.13 | Resultado histórico de otro commit; no sustituye al run 42983995841. |
 | `ui_holo.py` | No está presente ni versionado en el árbol actual | En la suite se observó el fallback “Holographic chrome unavailable”; la interfaz usa paneles simples. El módulo cosmético es opcional, pero hoy no está incluido. |
 
-La discrepancia entre `505/13`, `505/12`, `505/13` en esta matriz local,
+La discrepancia entre `506/13`, `506/12`, `506/13` en esta matriz local,
 `474/13` en el JSON de Etapa 0 y otras cifras antiguas es de **cortes
 distintos**, no evidencia de que se hayan ejecutado todas sobre el mismo código.
-Los skips actuales son: una prueba de symlinks no disponible en el entorno,
-una prueba DOCX que pasa solo en 3.12 por dependencia opcional, una prueba
-Excel omitida por `pandas`/`openpyxl` y diez pruebas UIA opt-in no ejecutadas.
+Los skips de la suite completa son: una prueba de symlinks no disponible en el
+entorno, una prueba DOCX que pasa solo en 3.12 por dependencia opcional, una
+prueba Excel omitida por `pandas`/`openpyxl` y diez pruebas UIA opt-in que se
+omitieron en esa corrida y luego pasaron por separado en Windows/Python 3.12.
 Los nombres y motivos completos están en [plan_seguimiento.md](./plan_seguimiento.md).
 El número válido siempre debe citar intérprete, árbol/commit, comando y skips.
 
@@ -240,10 +253,11 @@ Las pruebas unitarias cubren aprobación, cancelación, parada, orden del
 indicador y transmisión. La suite completa del árbol actual pasó localmente en
 Python 3.11/3.12/3.13.
 
-**Estado:** corregido y probado a nivel unitario. No se ejecutó la integración
-UIA opt-in ni una inspección visual manual del HUD, no se verificó un proveedor
-real y no hay CI sobre un commit integrado. Por ello, la aceptación de extremo
-a extremo y la declaración de “100 % cerrado” siguen abiertas.
+**Estado:** corregido; la suite local de 506 pruebas por versión, la CI del
+commit base, las 10 pruebas UIA y la inspección visual local pasaron. El flujo
+de grant y revocación se ejercitó con un almacén temporal aislado. La CI del
+ajuste actual de texto está pendiente; no se usó una captura, proveedor o
+aplicación real.
 
 ### P0 — Permisos de captura persistentes y delimitados
 
@@ -261,9 +275,10 @@ perfil, expiración exacta, alcance, uso, revocación y auditoría metadata-only
 Los eventos recientes son metadata-only y acotados en memoria; los metadatos de
 uso del grant activo se persisten.
 
-**Estado:** implementado y probado localmente. Falta la aceptación visual/UIA
-del flujo del HUD y CI integrada; no se presume probado mediante reinicio real
-de aplicación, otra cuenta de Windows o proveedor externo.
+**Estado:** implementado; UIA, flujo visual local y creación/lectura/revocación
+en un almacén temporal aislado aprobados. La suite existente cubre recarga,
+vencimiento y aislamiento de perfil. La CI del ajuste actual de UI está
+pendiente; no se usó el almacén real ni un proveedor externo.
 
 ### P1 — Planes no muestran efecto real por paso
 
@@ -448,7 +463,8 @@ borrado explícitos de configuración.
 3. **Permisos reutilizables — implementado localmente:** permisos por perfil
    durante 30 días, alcance exacto, revocación visible y aprobación humana.
    Las acciones de alto impacto mantienen su confirmación por operación. La
-   integración visual/UIA aún no se ha validado en una sesión real.
+   validación visual local y el flujo de grants con almacén temporal pasaron;
+   no se utilizó un proveedor real.
 4. **Plugins externos:** ¿basta confianza explícita en proceso para plugins
    escritos por el usuario, o se necesita sandbox antes de aceptar código de
    terceros? No confundir los dos casos.
@@ -468,12 +484,13 @@ de argumentos, política fail-closed, confirmación, undo, resultados tipados y
 pruebas es reutilizable. Las integraciones deben crecer con adapters
 específicos, permisos mínimos y evidencia real acotada.
 
-Los P0 de captura y grants están implementados y cubiertos por pruebas locales,
-pero su aceptación integral sigue abierta por la falta de UIA/validación visual
-y CI integrada sobre un commit. No declarar “todo P0/P1 cerrado” ni “control
-universal” mientras esas puertas sigan abiertas, los planes no expliquen
-efectos por paso y la mensajería continúe sin resultado independiente. No
-habilitar uso sensible desatendido a partir de tests sintéticos.
+Los P0 de captura y grants están implementados; la suite local actual, UIA
+sintética y aceptación visual/flujo local de permisos están aprobados. La CI
+del ajuste actual de lectura del panel sigue pendiente y no se probó proveedor
+o aplicación real. No declarar “todo P0/P1 cerrado” ni “control universal”
+mientras esas puertas sigan abiertas, los planes no expliquen efectos por paso
+y la mensajería continúe sin resultado independiente. No habilitar uso sensible
+desatendido a partir de tests sintéticos.
 
 ## 10. Redundancia documental y limpieza segura
 

@@ -25,15 +25,17 @@ automatización administrativa genérica.
 
 ## 2. Línea base y reglas para no perder el rumbo
 
-### Estado conocido al 11-11-2026
+### Estado conocido al 11-11-2026; verificación posterior
 
 | Evidencia | Estado | Uso correcto |
 |---|---|---|
-| Suite local del árbol actual | Python 3.11/3.12/3.13; 505 pruebas por versión; 0 fallos; 0 errores; 13/12/13 omitidas | Ejecutada sobre el mismo árbol de trabajo local, todavía sin commit. Los skips están clasificados abajo; no cuentan como aprobados. |
+| Suite local actual | Python 3.11/3.12/3.13; 506 pruebas por versión; 0 fallos; 0 errores; 13/12/13 omitidas | Ejecutada sobre el árbol con el ajuste de lectura del panel de permisos; skips clasificados abajo. |
+| UI Automation | 10/10 pruebas opt-in pasaron en Windows/Python 3.12 | Ventanas sintéticas; no equivale a probar una aplicación real. |
+| Aceptación visual local | Banners, controles tipados, captura cancelable y flujo de concesión/revocación | Revisado con datos sintéticos y almacén JSON temporal; no se capturó ni transmitió imagen y no se tocó el almacén real. El panel ahora ajusta el texto sin barra horizontal. |
 | `evidence/stage0-windows-2026-11-10.json` | Evidencia anterior: 474 tests, 13 skips por cada versión 3.11/3.12/3.13; incluye run 42948215095 | Antecedente; no sustituye un run de la revisión actual. |
-| Run 42951554253 | Documentado como verde para Python 3.11–3.13 y commit `2d21993...` | Referencia histórica de otro commit; no atribuirlo al HEAD actual `4461d77`. |
-| Workflow Windows | Existe `.github/workflows/windows-tests.yml` con matriz 3.11/3.12/3.13 | Ejecutar después de corregir y subir un commit revisable. |
-| HEAD y árbol local | HEAD `4461d77bd108ec49794ff08c8d75c45c2a1b96fe`; árbol sucio con cambios locales y de esta tarea | Las pruebas identifican el HEAD base y se ejecutaron sobre el árbol modificado; no se atribuyen a un commit integrado. |
+| Run 42983995841 | Verde en Python 3.11–3.13 para commit `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c` | [Workflow de GitHub Actions](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42983995841); es anterior al ajuste local de ajuste de texto y no lo valida. |
+| Workflow Windows | Run 42983995841 pasó con matriz 3.11/3.12/3.13 | Validación completada para el commit `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c`. |
+| HEAD y árbol local | HEAD `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c`; `ui.py`, `tests/test_session_grants.py` y estos informes están modificados localmente | Suite completa y UIA pasaron sobre el árbol actual; la CI del ajuste de UI aún no se ha ejecutado. |
 | Validaciones locales adicionales | `compileall`, `setup.py --dry-run` y `pip check` pasan en Python 3.11/3.12/3.13 | No sustituyen CI ni una instalación limpia. |
 | UI holográfica | `ui_holo.py` no existe ni está versionado; la suite observó el fallback | El arranque funciona con paneles simples; reintroducir el módulo sería un cambio separado. |
 
@@ -56,13 +58,13 @@ automatización administrativa genérica.
 
 | Orden | Etapa | Prioridad | Estado al corte | Bloquea |
 |---:|---|---|---|---|
-| 0 | Línea base, árbol y CI reproducibles | P0 de gestión | Parcial: matriz local verde; snapshot previo y CI integrada pendientes | Toda declaración de release |
-| 1 | Consentimiento de captura y permisos de pantalla | P0 privacidad | Implementado y probado localmente; aceptación UIA/visual pendiente | Uso sensible desatendido y declaración de cierre integral |
+| 0 | Línea base, árbol y CI reproducibles | P0 de gestión | Suite local actual y UIA verdes; CI verde en el commit base, CI del ajuste UI pendiente | Integrar y validar el ajuste actual antes de declarar release |
+| 1 | Consentimiento de captura y permisos de pantalla | P0 privacidad | Tests, CI base, UIA y flujo HUD/permiso sintético aprobados; proveedor real no probado | Uso sensible desatendido y declaración de cierre integral |
 | 2 | Efectos visibles de planes | P1 alto | Parcial: preview y aprobación existen, efecto no representa operación | Habilitar planes con efectos no triviales |
 | 3 | Archivos, undo e interrupciones | P1 alto | Base implementada; matriz completa pendiente | Escrituras/borrados desatendidos |
 | 4 | Mensajería, Steam y acciones de escritorio reales | P1 alto | Fail-closed parcial; resultados reales incompletos | Envío/instalación automatizados |
 | 5 | Dashboard, plugins y confianza | P1 alto | Varias mitigaciones implementadas; identidad remota/sandbox pendientes | Uso remoto y plugins de terceros |
-| 6 | Dependencias, pruebas y diagnóstico | P1/P2 | Matriz local 3.11–3.13 verde; CI integrada, reproducibilidad de instalación y warnings pendientes | Publicar compatibilidad |
+| 6 | Dependencias, pruebas y diagnóstico | P1/P2 | Matriz local actual verde; CI verde en el commit base, CI del ajuste local pendiente; reproducibilidad y warnings pendientes | Publicar compatibilidad |
 | 7 | Integraciones por aplicación | P2, bajo gate | Pilotos; no cerrar por una ejecución sintética | Expansión de capacidades |
 | 8 | Privacidad, manual, onboarding y UX | P2 | Parcial/no consolidado | Incorporación de usuarios externos |
 | 9 | Métricas, modularización e instalador | P3 | Ideas, no requisito inmediato | Escalado/distribución |
@@ -79,12 +81,14 @@ resultados.
 
 ### Tareas
 
-- [ ] Registrar el hash de HEAD y `git status --short` antes de cambios. El
-  snapshot previo no quedó conservado como artefacto; el HEAD base y el estado
-  actual se registran arriba/abajo sin reconstruir el pasado.
-- [ ] Acordar cómo se integran los cambios locales preexistentes; se
-  conservaron, sin commit ni reversión.
-- [x] Ejecutar unittest completo en Python 3.11, 3.12 y 3.13: 505 pruebas por
+- [x] Registrar el HEAD base probado:
+  `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c`. La suite actual corrió con el
+  ajuste local sin integrar; el snapshot anterior a los cambios originales no
+  quedó conservado como artefacto.
+- [x] La implementación P0 anterior quedó integrada en `a4a2ed4`. El ajuste
+  actual de lectura del panel y su prueba están en el árbol local y aún no
+  tienen CI remota.
+- [x] Ejecutar unittest completo en Python 3.11, 3.12 y 3.13: 506 pruebas por
   versión, 0 fallos y 0 errores; 13, 12 y 13 skips, respectivamente.
 - [x] Clasificar los skips: `test_stale_cleanup_does_not_follow_or_remove_symlinks`
   se omite porque el entorno no permite crear enlaces simbólicos (3.11–3.13);
@@ -92,8 +96,10 @@ resultados.
   falta de `python-docx` en 3.11 y 3.13 (pasa en 3.12);
   `test_local_excel_preview_reads_all_supported_sheets_without_writing` se
   omite por dependencias opcionales `pandas`/`openpyxl` en las tres versiones.
-  Los otros 10 skips son pruebas opt-in de UI Automation: se omiten porque no
-  se definió `MARK_RUN_UIA_INTEGRATION=1` y crean/interactúan con ventanas:
+  Los otros 10 skips fueron pruebas opt-in de UI Automation omitidas en esa
+  corrida porque no se definió `MARK_RUN_UIA_INTEGRATION=1`; luego se ejecutaron
+  por separado en Windows/Python 3.12 y las 10 pasaron. Crean/interactúan con
+  ventanas sintéticas:
   `test_focus_control_on_local_synthetic_window`,
   `test_uia_focus_selector_matrix_measures_exact_and_near_miss_targets`,
   `test_focus_control_stops_when_window_disappears`,
@@ -109,9 +115,11 @@ resultados.
 - [x] Ejecutar `python -m compileall -q .`, `python setup.py --dry-run` y
   `python -m pip check` con Python 3.11, 3.12 y 3.13; los tres comandos pasan
   en cada intérprete.
-- [ ] Lanzar workflow Windows desde el commit integrado y guardar links/
-  artefactos por intérprete; confirmar que los runs 42948215095 y 42951554253
-  son referencias históricas. No hay commit integrado de este árbol.
+- [x] Lanzar workflow Windows desde el commit integrado. Run
+  [42983995841](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42983995841):
+  Python 3.11, 3.12 y 3.13 completados con éxito para
+  `a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c`. Este run precede el ajuste
+  local del panel, que requiere CI propia.
 - [x] Registrar que el módulo UI opcional `ui_holo.py` no está en el árbol y
   que se observó el fallback funcional; no se decidió reintroducirlo.
 - [x] Documentar solo versiones, estados, conteos y motivos técnicos de skips;
@@ -119,11 +127,12 @@ resultados.
 
 ### Salida
 
-- La matriz 3.11/3.12/3.13 del mismo commit está verde o cada fallo queda
-  asignado y explicado.
+- La matriz local 3.11/3.12/3.13 está verde para el árbol actual; la CI del
+  commit base está verde y el ajuste local requiere su propio run.
 - Los skips se explican y no se presentan como aprobados.
-- La línea base local está registrada; la CI reproducible del commit integrado
-  sigue abierta.
+- La CI del commit base está verde; el ajuste local de UI requiere integración
+  y CI. Los skips descritos no cuentan como aprobados; las 10 pruebas UIA
+  opt-in pasaron en Windows/Python 3.12 con ventanas sintéticas.
 
 ## 5. Etapa 1 — consentimiento de pantalla/cámara y grants
 
@@ -153,8 +162,10 @@ resultados.
   transmitir y respetar el alcance concedido. Si no se puede fijar el objetivo,
   se pregunta otra vez.
 - El almacén local persistente, el vencimiento fijo, el alcance por tarea y la
-  revocación están implementados. La aceptación integral sigue pendiente de
-  pruebas opt-in de UIA y validación visual del HUD en una sesión real.
+  revocación están implementados. Las 10 pruebas opt-in de UIA pasaron en
+  Windows/Python 3.12. La inspección visual y el flujo de grant/revocación se
+  probaron con datos sintéticos y un almacén temporal aislado. No se usó un
+  proveedor ni el almacén real del usuario.
 
 ### 1A. Captura del modelo
 
@@ -211,12 +222,15 @@ resultados.
 - [x] El HUD aclara que el permiso se guarda aunque la operación falle; la
   elección de “recordar” precede a la ejecución y no se revierte ante un fallo.
 
-**Estado de aceptación:** implementación y pruebas unitarias completadas en el
-árbol local. La prueba de timeout/cancelación, las rutas de captura y el almacén
-de grants pasan; también pasan las suites de la matriz local. No cerrar la
-aceptación integral hasta ejecutar la CI sobre un commit integrado y la prueba
-opt-in/visual del HUD en un entorno autorizado. Las 10 pruebas UIA omitidas no
-se consideran aprobadas.
+**Estado de aceptación:** implementación y suites locales completadas. La CI
+del commit base
+`a4a2ed466bf791ad9d9b5e3bdc4738c92d6d043c` pasó en Python 3.11–3.13 (run
+[42983995841](https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42983995841)).
+El árbol actual pasó 506 pruebas por versión y las 10 pruebas UIA opt-in
+pasaron en Windows/Python 3.12. El HUD y el flujo de creación, visualización y
+revocación se comprobaron con datos sintéticos y un almacén temporal aislado.
+El ajuste local de texto aún requiere CI; no se probó proveedor real, captura
+real ni perfil de producción.
 
 ### Pruebas de salida
 
@@ -553,16 +567,20 @@ capacidad bloqueada.
 
 ## 16. Prioridades para la siguiente sesión
 
-1. Confirmar con el compañero el árbol de trabajo y ejecutar CI sobre el commit
-   que se entregará.
-2. Ejecutar las 10 pruebas opt-in UIA y la aceptación visual del HUD en un
-   entorno autorizado; adjuntar evidencia sin datos sensibles.
-3. Validar el flujo de grants en el HUD, incluido reinicio y perfil, y mantener
-   la política de tarea exacta/30 días ya implementada.
-4. Mostrar efecto por paso en los planes y validar argumentos al ejecutar.
-5. Conservar mensajería genérica bloqueada y no repetir WhatsApp ambiguo.
-6. Validar panel TLS/remoto y plugin trust en pruebas controladas.
-7. Solo después, elegir una integración de lectura de alto valor y completar su
+1. [x] Confirmar la línea base: run 42983995841 pasó en Python 3.11–3.13 para
+   `a4a2ed4`. La suite actual cubre el ajuste local posterior, que requiere CI
+   propia.
+2. [x] Ejecutar las 10 pruebas opt-in UIA en un entorno autorizado:
+   10/10 aprobadas en Windows/Python 3.12 con ventanas sintéticas.
+3. [x] Revisar visualmente el HUD y el flujo de grant: creación desde
+   confirmación, persistencia en archivo temporal, visualización, revocación
+   individual y total; no se usó el almacén real ni un proveedor.
+4. Integrar y ejecutar CI para el ajuste local del panel de permisos; mantener
+   pendiente la prueba con proveedor/cuenta real.
+5. Mostrar efecto por paso en los planes y validar argumentos al ejecutar.
+6. Conservar mensajería genérica bloqueada y no repetir WhatsApp ambiguo.
+7. Validar panel TLS/remoto y plugin trust en pruebas controladas.
+8. Solo después, elegir una integración de lectura de alto valor y completar su
    matriz.
 
 ## 17. Relación con los documentos anteriores

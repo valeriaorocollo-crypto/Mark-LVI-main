@@ -2286,6 +2286,7 @@ class SessionGrantsOverlay(_HudOverlay):
             f"QListWidget {{ background: #000d12; color: {C.TEXT}; "
             f"border: 1px solid {C.BORDER}; }}"
         )
+        self._items.setWordWrap(True)
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 14, 18, 14)
