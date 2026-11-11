@@ -4,6 +4,7 @@ import threading
 import unittest
 from unittest.mock import patch
 
+from actions import browser_control, computer_control
 from core import action_policy, confirm, session_grants
 
 
@@ -118,6 +119,76 @@ class ActionPolicyTests(unittest.TestCase):
 
         self.assertFalse(ran.wait(0.1))
 
+    def test_opaque_desktop_effects_fail_closed_before_handler(self) -> None:
+        cases = (
+            ("computer_control", {"action": "press", "key": "delete"}),
+            ("computer_control", {"action": "hotkey", "keys": "shift+delete"}),
+            ("computer_control", {"action": "paste", "text": "synthetic"}),
+            ("computer_control", {"action": "drag", "x1": 1, "y1": 2, "x2": 3, "y2": 4}),
+            ("computer_control", {"action": "click", "x": 500, "y": 300}),
+            ("computer_control", {"action": "click"}),
+            ("computer_control", {"action": "focus_window", "title": "Synthetic"}),
+            ("computer_settings", {"action": "press_key", "key": "delete"}),
+            ("computer_settings", {"action": "type_text", "text": "synthetic"}),
+        )
+        for tool, arguments in cases:
+            with self.subTest(tool=tool, arguments=arguments):
+                called = []
+                result = action_policy.dispatch(
+                    tool,
+                    arguments,
+                    lambda: called.append(True) or "status=done",
+                )
+                self.assertIn("status=failed", result)
+                self.assertEqual(called, [])
+                self.assertEqual(self.prompts, [])
+
+    def test_exact_plan_cannot_authorize_an_unknown_effect(self) -> None:
+        arguments = {"action": "press", "key": "delete"}
+        called = []
+        with action_policy.authorize_plan([("computer_control", arguments)]):
+            result = action_policy.dispatch(
+                "computer_control",
+                arguments,
+                lambda: called.append(True) or "status=done",
+            )
+
+        self.assertIn("status=failed", result)
+        self.assertEqual(called, [])
+
+    def test_direct_browser_handler_still_requires_exact_target_approval(self) -> None:
+        with patch.object(browser_control._registry, "get") as get_session:
+            result = browser_control.browser_control({
+                "action": "click",
+                "selector": "button[type='submit']",
+            })
+
+        self.assertIn("[CONFIRMATION_PENDING]", result)
+        get_session.assert_not_called()
+        self.assertEqual(len(self.prompts), 1)
+
+    def test_semantic_write_preview_shows_target_and_masks_sensitive_input(self) -> None:
+        selector = {
+            "window_name": "Synthetic login",
+            "name": "Password",
+            "control_type": "Edit",
+            "automation_id": "password",
+        }
+        with patch.object(computer_control.ui_adapter, "write_control") as write:
+            result = computer_control.computer_control({
+                "action": "write_control",
+                "selector": selector,
+                "text": "synthetic-secret",
+            })
+
+        self.assertIn("[CONFIRMATION_PENDING]", result)
+        detail = self.prompts[-1][1]
+        self.assertIn("Synthetic login", detail)
+        self.assertIn("Password", detail)
+        self.assertIn("[REDACTED]", detail)
+        self.assertNotIn("synthetic-secret", detail)
+        write.assert_not_called()
+
     def test_voice_confirmation_is_not_bypassed_by_authorized_task_plan(self) -> None:
         ran = threading.Event()
         voice_handler = lambda _text: confirm.VoiceDecision("accept")
@@ -177,24 +248,28 @@ class ActionPolicyTests(unittest.TestCase):
         self.assertNotIn("private-credential", detail)
 
     def test_confirmation_masks_text_for_sensitive_desktop_targets(self) -> None:
-        result = action_policy.dispatch(
+        result = action_policy.run_or_confirm(
             "computer_control",
+            "write_control",
+            "Write to control?",
+            "Synthetic target",
+            lambda: "not executed",
             {
-                "action": "type",
+                "action": "write_control",
                 "selector": {
                     "window_name": "Synthetic login",
                     "name": "Password",
                     "control_type": "Edit",
+                    "automation_id": "password",
                 },
                 "text": "private-password-value",
             },
-            lambda: "not executed",
         )
 
         self.assertIn("[CONFIRMATION_PENDING]", result)
         detail = self.prompts[-1][1]
-        self.assertIn("[REDACTED]", detail)
         self.assertNotIn("private-password-value", detail)
+        self.assertEqual(len(self.prompts), 1)
 
     def test_sensitive_action_refuses_if_hud_is_unavailable(self) -> None:
         ran = threading.Event()
@@ -333,17 +408,10 @@ class ActionPolicyTests(unittest.TestCase):
         self.assertEqual(called, [])
         self.assertEqual(len(self.prompts), 1)
 
-    def test_opaque_global_input_requires_hud_before_handler_runs(self) -> None:
+    def test_targeted_actions_wait_for_hud_before_handler_runs(self) -> None:
         cases = (
-            ("computer_control", {"action": "press", "key": "delete"}),
-            ("computer_control", {"action": "hotkey", "keys": "shift+delete"}),
-            ("computer_control", {"action": "click", "x": 500, "y": 300}),
-            ("computer_control", {"action": "click"}),
-            ("computer_control", {"action": "click", "target": "Alquilar ahora"}),
-            ("computer_control", {"action": "copy"}),
             ("computer_control", {"action": "screen_find", "description": "Save"}),
             ("browser_control", {"action": "click", "selector": "Continue"}),
-            ("computer_settings", {"action": "press_key", "key": "delete"}),
         )
         for tool, arguments in cases:
             with self.subTest(arguments=arguments):
@@ -359,6 +427,18 @@ class ActionPolicyTests(unittest.TestCase):
                 confirm.resolve(False)
                 self.assertEqual(called, [])
                 self.prompts.clear()
+
+    def test_unscoped_browser_click_fails_closed_before_handler(self) -> None:
+        called = []
+        result = action_policy.dispatch(
+            "browser_control",
+            {"action": "click"},
+            lambda: called.append(True) or "status=done",
+        )
+
+        self.assertIn("status=failed", result)
+        self.assertEqual(called, [])
+        self.assertEqual(self.prompts, [])
 
     def test_auto_code_helper_uses_the_generated_write_preview(self) -> None:
         written = []
@@ -399,11 +479,14 @@ class ActionPolicyTests(unittest.TestCase):
             ) as request:
                 result = action_policy.request_confirmation(
                     "computer_control",
-                    "press",
-                    "Press key?",
-                    "Delete key",
+                    "screen_click",
+                    "Click target?",
+                    "Synthetic target",
                     lambda: called.append(True) or "pressed",
-                    arguments={"action": "press", "key": "delete"},
+                    arguments={
+                        "action": "screen_click",
+                        "description": "Synthetic target",
+                    },
                 )
         finally:
             action_policy._CONFIRMED_TOOL.reset(token)

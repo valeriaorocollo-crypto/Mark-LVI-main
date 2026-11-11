@@ -10,6 +10,22 @@ from core import tool_audit, ui_adapter
 
 
 class ComputerControlReadTests(unittest.TestCase):
+    def test_direct_opaque_input_is_blocked_before_driver_call(self) -> None:
+        cases = (
+            {"action": "press", "key": "delete"},
+            {"action": "hotkey", "keys": "shift+delete"},
+            {"action": "click", "x": 500, "y": 300},
+            {"action": "paste", "text": "synthetic"},
+            {"action": "drag", "x1": 1, "y1": 2, "x2": 3, "y2": 4},
+        )
+        for arguments in cases:
+            with self.subTest(arguments=arguments), patch.object(
+                computer_control, "_require_pyautogui"
+            ) as load_driver:
+                result = computer_control.computer_control(arguments)
+                self.assertIn("status=failed", result)
+                load_driver.assert_not_called()
+
     def test_read_control_returns_live_text_without_confirmation(self) -> None:
         selector = {
             "window_name": "Demo",

@@ -855,7 +855,7 @@ def _suggest(description: str) -> str:
         f"are: {hint}. Which was meant?",
         said=description)
 
-def computer_settings(
+def _computer_settings_impl(
     parameters: dict = None,
     response=None,
     player=None,
@@ -1142,6 +1142,27 @@ def computer_settings(
         "computer_settings",
         "the command was sent, but the resulting computer state was not read back",
         wanted=action,
+    )
+
+
+def computer_settings(
+    parameters: dict = None,
+    response=None,
+    player=None,
+    session_memory=None,
+) -> str:
+    """Keep direct handler calls behind the same effect policy as dispatch."""
+    if parameters is not None and not isinstance(parameters, dict):
+        return outcome.failed(
+            "computer_settings", "parameters must be an object"
+        )
+    args = parameters or {}
+    return action_policy.dispatch(
+        "computer_settings",
+        args,
+        lambda: _computer_settings_impl(
+            args, response, player, session_memory
+        ),
     )
 
 

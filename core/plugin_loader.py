@@ -17,7 +17,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from core import outcome
+from core import action_policy, outcome, tool_audit
 
 from memory.config_manager import (
     get_plugin_config,
@@ -146,19 +146,24 @@ class PluginRegistry:
                 "the plugin is disabled",
                 tool=name,
             )
-        try:
-            result = _call_run(rec.run, parameters, player, session_memory)
-            return outcome.normalize_dispatch_result(name, result)
-        except Exception as e:
-            error_type = type(e).__name__
-            self._logger(f"Plugin '{name}' failed ({error_type}).")
-            self._notify(f"Plugin '{name}' failed ({error_type}).")
-            return outcome.failed(
-                "plugin_loader",
-                "the plugin raised an exception",
-                tool=name,
-                error=error_type,
-            )
+        tool_audit.register_tool_risk(name, "external")
+
+        def invoke() -> str:
+            try:
+                result = _call_run(rec.run, parameters, player, session_memory)
+                return outcome.normalize_dispatch_result(name, result)
+            except Exception as e:
+                error_type = type(e).__name__
+                self._logger(f"Plugin '{name}' failed ({error_type}).")
+                self._notify(f"Plugin '{name}' failed ({error_type}).")
+                return outcome.failed(
+                    "plugin_loader",
+                    "the plugin raised an exception",
+                    tool=name,
+                    error=error_type,
+                )
+
+        return action_policy.dispatch(name, parameters, invoke)
 
     # -- called by ui.py's settings tab to render per-plugin config forms --
     def settings_schemas(self) -> list[dict]:

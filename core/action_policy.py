@@ -75,6 +75,13 @@ def _session_grant_for(tool: str, action: str) -> tuple[
     return None
 
 
+def _effect_arguments(tool: str, action: str, arguments: dict | None) -> dict:
+    params = dict(arguments) if isinstance(arguments, dict) else {}
+    action_key = "mode" if tool == "task_planner" else "action"
+    params[action_key] = action
+    return params
+
+
 def _has_sensitive_target(value) -> bool:
     if not isinstance(value, dict):
         return False
@@ -122,6 +129,18 @@ def _confirmation_value(value, *, selector_sensitive: bool = False):
     if isinstance(value, list):
         return [_confirmation_value(item) for item in value]
     return value
+
+
+def confirmation_arguments(arguments: dict) -> str:
+    """Serialize exact confirmation arguments while redacting sensitive values."""
+    try:
+        return json.dumps(
+            _confirmation_value(arguments),
+            ensure_ascii=False,
+            sort_keys=True,
+        )
+    except (TypeError, ValueError, RecursionError):
+        raise ValueError("confirmation arguments could not be safely serialized") from None
 
 
 def _validate_argument_tree(value, depth: int = 0) -> None:
@@ -197,6 +216,15 @@ def request_confirmation(
     This function intentionally fails closed if a caller attempts to use the
     confirmation gate for an action not marked high-impact.
     """
+    if tool_audit.classify_action_effect(
+        tool, _effect_arguments(tool, action, arguments)
+    ) == "unknown":
+        return outcome.failed(
+            "action_policy",
+            "the action effect or target is unknown; nothing was executed",
+            tool=tool,
+            action=action,
+        )
     if not requires_confirmation(tool, action, arguments):
         return outcome.failed(
             "action_policy",
@@ -240,6 +268,15 @@ def run_or_confirm(
     arguments: dict | None = None,
 ) -> str:
     """Run routine actions directly and gate only high-impact actions."""
+    if tool_audit.classify_action_effect(
+        tool, _effect_arguments(tool, action, arguments)
+    ) == "unknown":
+        return outcome.failed(
+            "action_policy",
+            "the action effect or target is unknown; nothing was executed",
+            tool=tool,
+            action=action,
+        )
     if not requires_confirmation(tool, action, arguments):
         return run()
     return request_confirmation(
@@ -327,6 +364,22 @@ def dispatch(
             tool=tool,
         )
 
+    effect = tool_audit.classify_action_effect(tool, arguments)
+    if effect == "unknown":
+        action_value = arguments.get(
+            "mode" if tool == "task_planner" else "action", "execute"
+        )
+        action = (
+            action_value.strip().lower()
+            if isinstance(action_value, str) else "execute"
+        )
+        return outcome.failed(
+            "action_policy",
+            "the action effect or target is unknown; nothing was executed",
+            tool=tool,
+            action=action,
+        )
+
     default_actions = {
         "game_updater": "update",
         "reminder": "schedule",
@@ -362,12 +415,8 @@ def dispatch(
         return run()
 
     try:
-        serialized = json.dumps(
-            _confirmation_value(arguments),
-            ensure_ascii=False,
-            sort_keys=True,
-        )
-    except (TypeError, ValueError):
+        serialized = confirmation_arguments(arguments)
+    except ValueError:
         return outcome.failed(
             "action_policy",
             "arguments could not be safely shown for confirmation; nothing was executed",

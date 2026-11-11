@@ -336,6 +336,29 @@ _ACTION_RISK = {
         "trending": "read_or_navigate",
     },
 }
+_OPAQUE_DESKTOP_ACTIONS = {
+    "computer_control": {
+        "click", "double_click", "right_click", "drag", "hotkey", "press",
+        "paste", "type", "smart_type", "clear_field", "focus_window", "move",
+    },
+    "computer_settings": {
+        "press_key", "type_text", "write_on_screen", "type", "write",
+        "paste", "enter", "open_run", "close_window", "close_tab",
+        "close_app", "save",
+    },
+    "browser_control": {"press"},
+}
+_NAVIGATION_ACTIONS = {
+    "browser_control": {
+        "open", "go_to", "search", "new_tab", "switch", "back", "forward", "reload",
+        "scroll",
+    },
+    "computer_control": {"activate_window", "focus_control"},
+    "computer_settings": {
+        "open_settings", "file_explorer", "show_desktop", "switch_window",
+        "go_back", "go_forward", "next_tab", "prev_tab",
+    },
+}
 _DYNAMIC_TOOL_RISK: dict[str, str] = {}
 _DYNAMIC_RISK_LOCK = threading.Lock()
 
@@ -414,6 +437,8 @@ def classify_risk(tool: str, arguments: dict | None = None) -> str:
         "focus_control", "write_control", "invoke_control",
     }:
         selector = args.get("selector")
+        if isinstance(selector, dict) and action in {"write_control", "invoke_control"}:
+            return "high"
         if isinstance(selector, dict):
             target_fields = (
                 "window_name", "name", "control_type", "automation_id",
@@ -450,6 +475,130 @@ def classify_risk(tool: str, arguments: dict | None = None) -> str:
     if name in _STANDARD_TOOLS:
         return "standard"
     return "unclassified"
+
+
+def classify_action_effect(tool: str, arguments: dict | None = None) -> str:
+    """Classify the requested effect; opaque or unreviewed targets fail closed."""
+    name = tool.strip().lower() if isinstance(tool, str) else ""
+    args = arguments if isinstance(arguments, dict) else {}
+    action_key = "mode" if name in {"web_search", "task_planner"} else "action"
+    raw_action = args.get(action_key)
+    action = (
+        raw_action.strip().lower().replace("-", "_")
+        if isinstance(raw_action, str) else ""
+    )
+
+    if action in _OPAQUE_DESKTOP_ACTIONS.get(name, set()):
+        return "unknown"
+    if name == "computer_control":
+        selector = args.get("selector")
+        has_selector = isinstance(selector, dict) and bool(
+            isinstance(selector.get("window_name"), str)
+            and selector["window_name"].strip()
+            and isinstance(selector.get("control_type"), str)
+            and selector["control_type"].strip()
+            and isinstance(selector.get("name"), str)
+            and isinstance(selector.get("automation_id", ""), str)
+        )
+        if action in {"write_control", "invoke_control"}:
+            return "external_communication" if has_selector else "unknown"
+        if action == "focus_control":
+            return "navigation" if has_selector else "unknown"
+        if action == "activate_window":
+            title = args.get("title")
+            return "navigation" if isinstance(title, str) and title.strip() else "unknown"
+        if action == "screen_click":
+            description = args.get("description")
+            return (
+                "local_destructive_change"
+                if isinstance(description, str) and description.strip()
+                else "unknown"
+            )
+        if action in {"screen_find", "copy", "user_data"}:
+            return "external_communication"
+        if action == "close_app":
+            target = args.get("app_name") or args.get("text")
+            return (
+                "local_destructive_change"
+                if isinstance(target, str) and target.strip()
+                else "unknown"
+            )
+
+    if name == "browser_control":
+        if action in {"click", "type"}:
+            selector = args.get("selector")
+            target_text = args.get("text")
+            if (
+                isinstance(selector, str) and selector.strip()
+            ) or (
+                isinstance(target_text, str) and target_text.strip()
+            ):
+                return "external_communication"
+            return "unknown"
+        if action == "fill_form":
+            fields = args.get("fields")
+            if isinstance(fields, dict) and fields and all(
+                isinstance(selector, str) and selector.strip()
+                for selector in fields
+            ):
+                return "external_communication"
+            return "unknown"
+        if action in {"smart_click", "smart_type", "close", "close_all", "close_tab"}:
+            return "unknown"
+
+    if action in _NAVIGATION_ACTIONS.get(name, set()):
+        return "navigation"
+
+    if name in {"send_message", "meet_control", "gmail_control", "calendar_control"}:
+        return "external_communication"
+    if name == "game_updater" and action in {"install", "update"}:
+        return "financial_administrative"
+    if name == "computer_settings" and action in {
+        "restart", "shutdown", "toggle_wifi",
+    }:
+        return "financial_administrative"
+    if name == "manage_monitor" and action in {"add", "remove"}:
+        return "financial_administrative"
+    if name == "computer_control" and action in {"screen_find", "copy", "user_data"}:
+        return "external_communication"
+    if name == "file_controller":
+        if action == "delete":
+            return "local_destructive_change"
+        if action in {
+            "write", "create_file", "create_folder", "move", "copy", "rename",
+            "organize_desktop",
+        }:
+            return "local_reversible_change"
+    if name == "file_processor" and classify_risk(name, args) == "high":
+        return "local_reversible_change"
+    if name == "code_helper" and action in {
+        "auto", "write", "edit", "optimize",
+    }:
+        return "local_reversible_change"
+    if name == "task_planner" and action == "clear_history":
+        return "local_destructive_change"
+    if name == "shutdown_jarvis":
+        return "financial_administrative"
+    if name == "undo":
+        return "local_destructive_change"
+    if name == "open_app":
+        return "navigation"
+    if name == "close_camera":
+        return "local_reversible_change"
+    if name in {"flight_finder", "youtube_video"} and args.get("save") is True:
+        return "local_reversible_change"
+    if name in {"reminder", "save_memory"}:
+        return "local_reversible_change"
+
+    risk = classify_risk(name, args)
+    return {
+        "read_or_navigate": "read_only",
+        "state_change": "local_reversible_change",
+        "high": "local_destructive_change",
+        "external": "external_communication",
+        "standard": "read_only",
+        "unclassified": "unknown",
+    }.get(risk, "unknown")
 
 
 def is_reviewed_tool(tool: str) -> bool:

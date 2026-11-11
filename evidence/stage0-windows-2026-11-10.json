@@ -1,6 +1,6 @@
 {
   "stage": "0",
-  "collected_at": "2026-11-10",
+  "collected_at": "2026-11-11",
   "operating_system": {
     "name": "Windows 10 Pro for Workstations",
     "version": "10.0.19045",
@@ -10,8 +10,8 @@
     {
       "version": "3.11.9",
       "tests_run": 474,
-      "tests_passed": 462,
-      "tests_skipped": 12,
+      "tests_passed": 461,
+      "tests_skipped": 13,
       "compileall": "passed",
       "setup_dry_run": "passed",
       "pip_check": "passed",
@@ -21,8 +21,8 @@
     {
       "version": "3.12.10",
       "tests_run": 474,
-      "tests_passed": 462,
-      "tests_skipped": 12,
+      "tests_passed": 461,
+      "tests_skipped": 13,
       "compileall": "passed",
       "setup_dry_run": "passed",
       "pip_check": "passed",
@@ -32,8 +32,8 @@
     {
       "version": "3.13.14",
       "tests_run": 474,
-      "tests_passed": 462,
-      "tests_skipped": 12,
+      "tests_passed": 461,
+      "tests_skipped": 13,
       "compileall": "passed",
       "setup_dry_run": "passed",
       "pip_check": "passed",
@@ -67,8 +67,22 @@
     "asus_certificate_trust": "not verified"
   },
   "remote_ci": {
-    "status": "pending",
-    "reason": "This local copy has no Git metadata or remote; the public repository with a matching name was not confirmed to contain this workflow and test suite."
+    "repository": "valeriaorocollo-crypto/Mark-LVI-main",
+    "workflow_run_id": 42948215095,
+    "workflow_run_url": "https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42948215095",
+    "tested_commit": "bd6c9ccd61dd6f83854b13e7b42fe0ccc7dfabde",
+    "status": "success",
+    "jobs": {
+      "python_3_11": "success",
+      "python_3_12": "success",
+      "python_3_13": "success"
+    },
+    "artifacts": [
+      "windows-ci-evidence-py3.11",
+      "windows-ci-evidence-py3.12",
+      "windows-ci-evidence-py3.13"
+    ],
+    "result": "All three Windows matrix jobs passed, including unit tests, pip check, Chromium smoke, compileall, and setup dry-run."
   },
   "data_handling": {
     "contains_credentials": false,

@@ -230,11 +230,8 @@ class ConfirmedActionTests(unittest.TestCase):
                 "action": "close_tab",
             })
 
-            self.assertIn("[CONFIRMATION_PENDING]", result)
+            self.assertIn("status=failed", result)
             self.assertFalse(invoked.is_set())
-
-            confirm.resolve(False)
-
             self.assertFalse(invoked.wait(0.1))
 
     def test_computer_settings_bounds_reload_and_scroll_inputs(self) -> None:
@@ -281,7 +278,7 @@ class ConfirmedActionTests(unittest.TestCase):
 
             self.assertFalse(volume_set.called)
 
-    def test_computer_settings_reports_unverified_without_echoing_text(self) -> None:
+    def test_computer_settings_blocks_unscoped_text_input(self) -> None:
         from actions import computer_settings
 
         secret_text = "synthetic-private-input"
@@ -294,12 +291,11 @@ class ConfirmedActionTests(unittest.TestCase):
                 "value": secret_text,
             })
 
-        type_text.assert_called_once_with(secret_text, press_enter_after=False)
-        self.assertIn("status=unverified", result)
+        type_text.assert_not_called()
+        self.assertIn("status=failed", result)
         self.assertNotIn(secret_text, result)
-        self.assertIn(f"typed_characters={len(secret_text)}", result)
 
-    def test_save_waits_for_hud_before_action(self) -> None:
+    def test_unscoped_save_is_blocked_before_action(self) -> None:
         from actions import computer_settings
 
         invoked = threading.Event()
@@ -309,11 +305,8 @@ class ConfirmedActionTests(unittest.TestCase):
         ):
             result = computer_settings.computer_settings({"action": "save"})
 
-            self.assertIn("[CONFIRMATION_PENDING]", result)
+            self.assertIn("status=failed", result)
             self.assertFalse(invoked.is_set())
-
-            confirm.resolve(False)
-
             self.assertFalse(invoked.wait(0.1))
 
     def test_all_irreversible_settings_wait_for_hud(self) -> None:
@@ -331,6 +324,12 @@ class ConfirmedActionTests(unittest.TestCase):
                     with confirm._lock:
                         confirm._pending = None
                     result = computer_settings.computer_settings({"action": action})
+
+                    if action in {"close_window", "close_tab", "save"}:
+                        self.assertIn("status=failed", result)
+                        self.assertNotIn(action, calls)
+                        self.assertEqual(confirm.pending_title(), "")
+                        continue
 
                     self.assertIn("[CONFIRMATION_PENDING]", result)
                     self.assertNotIn(action, calls)
