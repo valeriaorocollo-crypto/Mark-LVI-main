@@ -10,8 +10,8 @@
     {
       "version": "3.11.9",
       "tests_run": 474,
-      "tests_passed": 462,
-      "tests_skipped": 12,
+      "tests_passed": 461,
+      "tests_skipped": 13,
       "compileall": "passed",
       "setup_dry_run": "passed",
       "pip_check": "passed",
@@ -21,8 +21,8 @@
     {
       "version": "3.12.10",
       "tests_run": 474,
-      "tests_passed": 462,
-      "tests_skipped": 12,
+      "tests_passed": 461,
+      "tests_skipped": 13,
       "compileall": "passed",
       "setup_dry_run": "passed",
       "pip_check": "passed",
@@ -32,8 +32,8 @@
     {
       "version": "3.13.14",
       "tests_run": 474,
-      "tests_passed": 462,
-      "tests_skipped": 12,
+      "tests_passed": 461,
+      "tests_skipped": 13,
       "compileall": "passed",
       "setup_dry_run": "passed",
       "pip_check": "passed",
@@ -67,8 +67,17 @@
     "asus_certificate_trust": "not verified"
   },
   "remote_ci": {
-    "status": "pending",
-    "reason": "This local copy has no Git metadata or remote; the public repository with a matching name was not confirmed to contain this workflow and test suite."
+    "repository": "valeriaorocollo-crypto/Mark-LVI-main",
+    "workflow_run_id": 42947058149,
+    "tested_commit": "57542f305523585daf6b1ab76cb0ca4e6c895d07",
+    "status": "failed",
+    "jobs": {
+      "python_3_11": "failed: two Windows path assertions",
+      "python_3_12": "failed: two Windows path assertions",
+      "python_3_13": "failed: two Windows path assertions"
+    },
+    "local_fix": "The two test modules now compare resolved paths; both pass on Python 3.11, 3.12, and 3.13.",
+    "next_step": "Push the local fixes and rerun the workflow; do not close Stage 0 until all three jobs pass."
   },
   "data_handling": {
     "contains_credentials": false,

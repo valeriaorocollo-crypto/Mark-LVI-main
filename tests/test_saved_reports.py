@@ -72,7 +72,7 @@ class SavedReportTests(unittest.TestCase):
                     flight_finder._save_to_desktop("flight results", "JFK", "LAX")
                 )
 
-            self.assertEqual(saved_path.parent, home / "Desktop")
+            self.assertEqual(saved_path.parent.resolve(), (home / "Desktop").resolve())
             self.assertEqual(saved_path.read_text(encoding="utf-8"), "flight results")
             popen.assert_called_once_with(["xdg-open", str(saved_path)])
 
@@ -91,7 +91,7 @@ class SavedReportTests(unittest.TestCase):
                     )
                 )
 
-            self.assertEqual(saved_path.parent, home / "Desktop")
+            self.assertEqual(saved_path.parent.resolve(), (home / "Desktop").resolve())
             self.assertIn("video summary", saved_path.read_text(encoding="utf-8"))
             popen.assert_called_once_with(["open", "-t", str(saved_path)])
 

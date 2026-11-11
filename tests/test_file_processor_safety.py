@@ -104,7 +104,12 @@ class FileProcessorSafetyTests(unittest.TestCase):
         })
 
         self.assertIn("[CONFIRMATION_PENDING]", result)
-        self.assertIn(f"Exact output path: {target}", self.prompts[-1][1])
+        output_line = next(
+            line for line in self.prompts[-1][1].splitlines()
+            if line.startswith("Exact output path: ")
+        )
+        prompted_target = Path(output_line.removeprefix("Exact output path: "))
+        self.assertEqual(prompted_target.resolve(), target.resolve())
         self.assertFalse(target.exists())
         confirm.resolve(False)
         self.assertFalse(target.exists())

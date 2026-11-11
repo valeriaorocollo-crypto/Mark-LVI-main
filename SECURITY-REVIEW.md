@@ -10,14 +10,19 @@ intentó un envío autorizado por WhatsApp; el último resultado quedó
 el diálogo real, pero no se completó ninguna instalación. No se cambió el
 firewall ni se inspeccionaron credenciales locales.
 
-Entorno de pruebas: Windows, Python 3.11.9, 3.12.10 y 3.13.14. En cada
-versión: **474 ejecutadas, 462 aprobadas y 12 omitidas**, compilación, setup
-dry-run y `pip check` aprobados. Playwright Python 1.64.1 y driver
+Entorno de pruebas: Windows, Python 3.11.9, 3.12.10 y 3.13.14. En local, en
+cada versión: **474 ejecutadas, 461 aprobadas y 13 omitidas**, compilación,
+setup dry-run y `pip check` aprobados. Playwright Python 1.64.1 y driver
 1.64.0-beta comparten la línea 1.64; Chromium 156.0.8078.4 se abrió en los
 tres intérpretes. Se añadió una prueba HTTPS local con certificado temporal
 confiado por HTTPX, que obtuvo HTTP 200. Dos omitidas requieren dependencias
-documentales opcionales; las 10 pruebas UIA opt-in pasaron por separado en
-Python 3.13 con ventanas sintéticas. Las omisiones y validaciones externas no
+documentales opcionales, una prueba de symlink no disponible en el entorno y
+10 pruebas UIA opt-in que pasaron por separado en Python 3.13 con ventanas
+sintéticas. La primera CI remota (run 42947058149, commit `57542f3`) corrió
+la matriz de las tres versiones, pero los tres jobs fallaron por dos tests
+que comparaban literalmente los alias corto/largo de las rutas Windows. Las
+aserciones se corrigieron y los módulos afectados pasan en local en las tres
+versiones; falta subirlas y repetir CI. Las omisiones y validaciones externas no
 se consideran aprobadas por la matriz general.
 
 ## Hallazgos y estado
@@ -61,11 +66,11 @@ capacidad concreta y limitada. Ninguno es un sandbox ni un permiso global.
 
 ## Acciones requeridas antes de declarar P0/P1 cerrados para este alcance
 
-1. Ejecutar la matriz en GitHub Actions y revisar logs. La matriz pasó
-   localmente en Windows con Python 3.11, 3.12 y 3.13. La copia local no tiene
-   `.git`; el URL proporcionado (`FatihMakes/Mark-LVI`) no contiene `tests/`
-   ni `.github/workflows/windows-tests.yml`, y los workflows visibles son
-   únicamente de revisión de Copilot. No se puede atribuir ese CI a esta copia.
+1. Repetir la matriz en GitHub Actions después de subir el arreglo de rutas y
+   revisar logs. La primera ejecución en
+   `valeriaorocollo-crypto/Mark-LVI-main` ejecutó Python 3.11, 3.12 y 3.13,
+   pero falló en dos tests de comparación literal de rutas; los módulos pasan
+   localmente tras normalizar con `Path.resolve()`.
 2. WhatsApp: el encabezado “Mi Princesa” se verificó tras corregir el driver,
    y el usuario lo identificó como el contacto autorizado para
    `+51 988 681 776`. La sesión nueva cargó la recuperación de foco y mostró el
