@@ -33,7 +33,7 @@ from dataclasses import dataclass, field
 from pathlib import Path
 from typing import Callable, Optional
 
-from core import outcome
+from core import action_policy, outcome
 
 _NAME_RE = re.compile(r"^[a-zA-Z_][a-zA-Z0-9_]{0,63}$")
 _DEFAULT_PARAMS = {"type": "OBJECT", "properties": {}}
@@ -169,18 +169,21 @@ class ActionRegistry:
                 "action parameters must be an object",
                 tool=name,
             )
-        try:
-            result = _call_handler(rec.handler, parameters, ctx or {})
-            return outcome.normalize_dispatch_result(name, result)
-        except Exception as e:
-            error_type = type(e).__name__
-            self._logger(f"Action '{name}' failed ({error_type}).")
-            return outcome.failed(
-                "action_loader",
-                "the action raised an exception",
-                tool=name,
-                error=error_type,
-            )
+        def invoke() -> str:
+            try:
+                result = _call_handler(rec.handler, parameters, ctx or {})
+                return outcome.normalize_dispatch_result(name, result)
+            except Exception as e:
+                error_type = type(e).__name__
+                self._logger(f"Action '{name}' failed ({error_type}).")
+                return outcome.failed(
+                    "action_loader",
+                    "the action raised an exception",
+                    tool=name,
+                    error=error_type,
+                )
+
+        return action_policy.dispatch(name, parameters, invoke)
 
 
 def _call_handler(fn: Callable, parameters: dict, ctx: dict) -> str:

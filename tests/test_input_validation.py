@@ -178,7 +178,7 @@ class InputValidationTests(unittest.TestCase):
         self.assertEqual(json.loads(result), expected)
         activate.assert_called_once_with("Demo")
 
-    def test_write_control_does_not_require_confirmation_for_ordinary_field(self) -> None:
+    def test_write_control_requires_confirmation_even_for_ordinary_field(self) -> None:
         selector = {
             "window_name": "Demo",
             "name": "Name",
@@ -196,10 +196,10 @@ class InputValidationTests(unittest.TestCase):
                 "text": "safe test",
             })
 
-        self.assertEqual(json.loads(result)["status"], "done")
-        write.assert_called_once_with(selector, "safe test")
+        self.assertIn("have not done it", result)
+        write.assert_not_called()
 
-    def test_invoke_control_does_not_require_confirmation_for_routine_target(self) -> None:
+    def test_invoke_control_requires_confirmation_even_for_routine_target(self) -> None:
         selector = {
             "window_name": "Demo",
             "name": "Next",
@@ -216,8 +216,8 @@ class InputValidationTests(unittest.TestCase):
                 "selector": selector,
             })
 
-        self.assertEqual(json.loads(result)["status"], "done")
-        invoke.assert_called_once_with(selector)
+        self.assertIn("have not done it", result)
+        invoke.assert_not_called()
 
     def test_focus_control_reports_invalid_selector_after_confirmation(self) -> None:
         selector = {
@@ -276,14 +276,14 @@ class InputValidationTests(unittest.TestCase):
                     result,
                 )
 
-    def test_computer_control_rejects_oversized_text_before_typing(self) -> None:
+    def test_computer_control_blocks_unscoped_text_before_typing(self) -> None:
         with patch.object(computer_control, "_type") as type_text:
             result = computer_control.computer_control({
                 "action": "type",
                 "text": "x" * (computer_control._MAX_TEXT_INPUT + 1),
             })
 
-        self.assertIn("10000-character limit", result)
+        self.assertIn("action effect or target is unknown", result)
         type_text.assert_not_called()
 
     def test_computer_control_bounds_wait_and_scroll(self) -> None:
@@ -306,7 +306,7 @@ class InputValidationTests(unittest.TestCase):
         sleep.assert_not_called()
         scroll.assert_not_called()
 
-    def test_computer_control_rejects_out_of_screen_clicks(self) -> None:
+    def test_computer_control_blocks_unscoped_coordinate_click(self) -> None:
         fake_input = SimpleNamespace(
             size=lambda: (1920, 1080),
             click=lambda *_args, **_kwargs: self.fail("click should not run"),
@@ -321,7 +321,7 @@ class InputValidationTests(unittest.TestCase):
                 "y": 10,
             })
 
-        self.assertIn("inside the current screen", result)
+        self.assertIn("action effect or target is unknown", result)
 
     def test_screen_click_requires_confirmation_before_visual_lookup(self) -> None:
         with (
@@ -463,14 +463,14 @@ class InputValidationTests(unittest.TestCase):
         self.assertEqual(sum("status=done" in result for result in results), 3)
         self.assertIn("rate limit", results[3])
 
-    def test_computer_control_rejects_oversized_hotkey(self) -> None:
+    def test_computer_control_blocks_unscoped_hotkey(self) -> None:
         with patch.object(computer_control, "_hotkey") as press_hotkey:
             result = computer_control.computer_control({
                 "action": "hotkey",
                 "keys": "ctrl+alt+shift+win+f1+f2",
             })
 
-        self.assertIn("1-5 keys", result)
+        self.assertIn("action effect or target is unknown", result)
         press_hotkey.assert_not_called()
 
     def test_message_rejects_oversized_text_without_needing_desktop(self) -> None:

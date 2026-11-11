@@ -1602,7 +1602,7 @@ class _SessionRegistry:
 
 _registry = _SessionRegistry()
 
-def browser_control(
+def _browser_control_impl(
     parameters:    dict = None,
     response=None,
     player=None,
@@ -1737,6 +1737,24 @@ def browser_control(
 
     _log(player, result)
     return result
+
+
+def browser_control(
+    parameters: dict = None,
+    response=None,
+    player=None,
+    session_memory=None,
+) -> str:
+    """Keep direct handler calls behind the central effect and confirmation gate."""
+    if parameters is None:
+        parameters = {}
+    return action_policy.dispatch(
+        "browser_control",
+        parameters,
+        lambda: _browser_control_impl(
+            parameters, response, player, session_memory
+        ),
+    )
 
 
 def _log(player, text: str):

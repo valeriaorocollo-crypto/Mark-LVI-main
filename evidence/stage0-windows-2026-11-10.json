@@ -1,6 +1,6 @@
 {
   "stage": "0",
-  "collected_at": "2026-11-10",
+  "collected_at": "2026-11-11",
   "operating_system": {
     "name": "Windows 10 Pro for Workstations",
     "version": "10.0.19045",
@@ -68,16 +68,21 @@
   },
   "remote_ci": {
     "repository": "valeriaorocollo-crypto/Mark-LVI-main",
-    "workflow_run_id": 42947058149,
-    "tested_commit": "57542f305523585daf6b1ab76cb0ca4e6c895d07",
-    "status": "failed",
+    "workflow_run_id": 42948215095,
+    "workflow_run_url": "https://github.com/valeriaorocollo-crypto/Mark-LVI-main/actions/runs/42948215095",
+    "tested_commit": "bd6c9ccd61dd6f83854b13e7b42fe0ccc7dfabde",
+    "status": "success",
     "jobs": {
-      "python_3_11": "failed: two Windows path assertions",
-      "python_3_12": "failed: two Windows path assertions",
-      "python_3_13": "failed: two Windows path assertions"
+      "python_3_11": "success",
+      "python_3_12": "success",
+      "python_3_13": "success"
     },
-    "local_fix": "The two test modules now compare resolved paths; both pass on Python 3.11, 3.12, and 3.13.",
-    "next_step": "Push the local fixes and rerun the workflow; do not close Stage 0 until all three jobs pass."
+    "artifacts": [
+      "windows-ci-evidence-py3.11",
+      "windows-ci-evidence-py3.12",
+      "windows-ci-evidence-py3.13"
+    ],
+    "result": "All three Windows matrix jobs passed, including unit tests, pip check, Chromium smoke, compileall, and setup dry-run."
   },
   "data_handling": {
     "contains_credentials": false,

@@ -147,6 +147,64 @@ class ToolAuditTests(unittest.TestCase):
             "unclassified",
         )
 
+    def test_effect_contract_distinguishes_effect_classes(self) -> None:
+        cases = (
+            ("computer_control", {"action": "read_control"}, "read_only"),
+            ("browser_control", {"action": "go_to", "url": "https://example.test"}, "navigation"),
+            ("file_controller", {"action": "write", "path": "report.txt"}, "local_reversible_change"),
+            ("file_controller", {"action": "delete", "path": "report.txt"}, "local_destructive_change"),
+            ("send_message", {"action": "send", "receiver": "Synthetic"}, "external_communication"),
+            ("computer_settings", {"action": "restart"}, "financial_administrative"),
+        )
+        for tool, arguments, expected in cases:
+            with self.subTest(tool=tool, arguments=arguments):
+                self.assertEqual(
+                    tool_audit.classify_action_effect(tool, arguments),
+                    expected,
+                )
+
+    def test_opaque_desktop_actions_have_unknown_effects(self) -> None:
+        cases = (
+            ("computer_control", {"action": "press", "key": "delete"}),
+            ("computer_control", {"action": "hotkey", "keys": "shift+delete"}),
+            ("computer_control", {"action": "paste", "text": "synthetic"}),
+            ("computer_control", {"action": "drag", "x1": 1, "y1": 2, "x2": 3, "y2": 4}),
+            ("computer_control", {"action": "click", "x": 500, "y": 300}),
+            ("computer_control", {"action": "focus_window", "title": "Synthetic"}),
+            ("computer_settings", {"action": "press_key", "key": "delete"}),
+            ("computer_settings", {"action": "type_text", "text": "synthetic"}),
+        )
+        for tool, arguments in cases:
+            with self.subTest(tool=tool, arguments=arguments):
+                self.assertEqual(
+                    tool_audit.classify_action_effect(tool, arguments),
+                    "unknown",
+                )
+
+    def test_semantic_writes_are_high_risk_independent_of_label_text(self) -> None:
+        selector = {
+            "window_name": "Store",
+            "name": "Continue",
+            "control_type": "Button",
+            "automation_id": "continue",
+        }
+        for label in ("Buy", "Comprar", "Delete", "Borrar", "Rent", "Alquilar", "Search"):
+            with self.subTest(label=label):
+                arguments = {
+                    "action": "invoke_control",
+                    "selector": {**selector, "name": label},
+                }
+                self.assertEqual(
+                    tool_audit.classify_risk("computer_control", arguments),
+                    "high",
+                )
+                self.assertEqual(
+                    tool_audit.classify_action_effect(
+                        "computer_control", arguments
+                    ),
+                    "external_communication",
+                )
+
     def test_every_documented_action_has_an_explicit_risk_class(self) -> None:
         self.assertEqual(
             set(computer_settings.ACTION_MAP)

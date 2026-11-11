@@ -90,6 +90,7 @@ def _focus_control(selector: object, arguments: dict) -> str:
         "focus_control",
         title="Allow focusing this desktop control?",
         detail=(
+            f"Target: {action_policy.confirmation_arguments({'selector': selector})}\n"
             "The selected control will receive keyboard focus.\n"
             "No click, text entry, or submission will be performed."
         ),
@@ -121,7 +122,10 @@ def _activate_window(window_name: object, arguments: dict) -> str:
         "computer_control",
         "activate_window",
         title="Allow activating this desktop window?",
-        detail="The selected window will be brought to the foreground.",
+        detail=(
+            f"Window title: {window_name}\n"
+            "The selected window will be brought to the foreground."
+        ),
         run=run,
         arguments=arguments,
     )
@@ -152,6 +156,7 @@ def _write_control(selector: object, text: object, arguments: dict) -> str:
         "write_control",
         title="Allow writing into this desktop field?",
         detail=(
+            f"Target and input: {action_policy.confirmation_arguments(arguments)}\n"
             "Text will be written only to the uniquely selected non-password "
             "field. No submit or click will be performed."
         ),
@@ -183,6 +188,7 @@ def _invoke_control(selector: object, arguments: dict) -> str:
         "invoke_control",
         title="Allow invoking this desktop control?",
         detail=(
+            f"Target: {action_policy.confirmation_arguments({'selector': selector})}\n"
             "The uniquely selected semantic control will be invoked once. "
             "No coordinates, arbitrary click, or repeated action will be used."
         ),
@@ -811,7 +817,7 @@ def _screen_click(description: object, arguments: dict) -> str:
         arguments=arguments,
     )
 
-def computer_control(
+def _computer_control_impl(
     parameters: dict,
     response=None,
     player=None,
@@ -1140,6 +1146,22 @@ def computer_control(
             f"the action failed with {error_type}",
             action=action or "unknown",
         )
+
+
+def computer_control(
+    parameters: dict,
+    response=None,
+    player=None,
+    session_memory=None,
+) -> str:
+    """Keep direct handler calls behind the same effect policy as dispatch."""
+    return action_policy.dispatch(
+        "computer_control",
+        parameters,
+        lambda: _computer_control_impl(
+            parameters, response, player, session_memory
+        ),
+    )
 
 
 # ── Tool declaration (auto-discovered by core/action_loader.py) ──────────────
