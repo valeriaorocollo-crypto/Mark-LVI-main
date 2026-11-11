@@ -1,0 +1,101 @@
+name: Windows test matrix
+
+on:
+  push:
+  pull_request:
+  workflow_dispatch:
+
+permissions:
+  contents: read
+
+jobs:
+  tests:
+    runs-on: windows-latest
+    timeout-minutes: 30
+    strategy:
+      fail-fast: false
+      matrix:
+        python-version: ["3.11", "3.12", "3.13"]
+    env:
+      PYTHONUTF8: "1"
+      PIP_DISABLE_PIP_VERSION_CHECK: "1"
+    steps:
+      - name: Check out source
+        uses: actions/checkout@v4
+
+      - name: Set up Python
+        uses: actions/setup-python@v5
+        with:
+          python-version: ${{ matrix.python-version }}
+          cache: pip
+          cache-dependency-path: requirements*.txt
+
+      - name: Prepare CI evidence directory
+        shell: pwsh
+        run: |
+          $evidence = Join-Path $env:RUNNER_TEMP "mark-ci-evidence"
+          New-Item -ItemType Directory -Force -Path $evidence | Out-Null
+          "Windows: $((Get-CimInstance Win32_OperatingSystem).Caption) $((Get-CimInstance Win32_OperatingSystem).Version)" |
+            Set-Content -Path (Join-Path $evidence "environment.txt")
+          "Python: $(python --version)" |
+            Add-Content -Path (Join-Path $evidence "environment.txt")
+          "Commit: $env:GITHUB_SHA" |
+            Add-Content -Path (Join-Path $evidence "environment.txt")
+          "Workflow run: $env:GITHUB_RUN_ID" |
+            Add-Content -Path (Join-Path $evidence "environment.txt")
+
+      - name: Install base dependencies
+        run: python -m pip install -r requirements.txt
+
+      - name: Check dependency consistency
+        run: python -m pip check
+
+      - name: Install Chromium
+        run: python -m playwright install chromium
+
+      - name: Report Playwright package and driver versions
+        run: |
+          python -c "import importlib.metadata as metadata, json; from pathlib import Path; import playwright._impl._driver as driver; package = Path(driver.compute_driver_executable()[1]).parent / 'package.json'; print('Python package:', metadata.version('playwright')); print('Bundled driver:', json.loads(package.read_text(encoding='utf-8'))['version'])"
+          python -m playwright --version
+          python -m playwright install --list
+          python -c "import importlib.metadata as m, json, re; from pathlib import Path; import playwright._impl._driver as d; package = m.version('playwright'); driver = json.loads((Path(d.compute_driver_executable()[1]).parent / 'package.json').read_text(encoding='utf-8'))['version']; assert re.match(r'^\d+\.\d+', package).group() == re.match(r'^\d+\.\d+', driver).group(), f'Playwright package/driver major.minor mismatch: {package} vs {driver}'; print('Playwright package/driver major.minor: compatible')"
+
+      - name: Smoke test Chromium
+        run: python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); browser=p.chromium.launch(headless=True); print('Chromium', browser.version); browser.close(); p.stop()"
+
+      - name: Save sanitized environment evidence
+        shell: pwsh
+        run: |
+          $evidence = Join-Path $env:RUNNER_TEMP "mark-ci-evidence"
+          $dependencyReport = python -c "import importlib.metadata as m, json; print(json.dumps({name: m.version(name) for name in ('playwright', 'fastapi', 'uvicorn', 'cryptography', 'httpx')}, sort_keys=True))"
+          $driverReport = python -c "import json; from pathlib import Path; import playwright._impl._driver as d; print(json.loads((Path(d.compute_driver_executable()[1]).parent / 'package.json').read_text(encoding='utf-8'))['version'])"
+          $browserReport = python -c "from playwright.sync_api import sync_playwright; p=sync_playwright().start(); b=p.chromium.launch(headless=True); print(b.version); b.close(); p.stop()"
+          @(
+            "Python dependencies: $dependencyReport"
+            "Playwright driver: $driverReport"
+            "Chromium: $browserReport"
+            "Dependency check: passed"
+          ) | Add-Content -Path (Join-Path $evidence "environment.txt")
+
+      - name: Compile Python modules
+        run: python -m compileall -q .
+
+      - name: Validate setup manifests
+        run: python setup.py --dry-run
+
+      - name: Run unit tests
+        shell: pwsh
+        run: |
+          $evidence = Join-Path $env:RUNNER_TEMP "mark-ci-evidence"
+          $testLog = Join-Path $evidence "unittest.txt"
+          python -m unittest discover -s tests -q 2>&1 | Tee-Object -FilePath $testLog
+          if ($LASTEXITCODE -ne 0) { exit $LASTEXITCODE }
+
+      - name: Upload CI evidence
+        if: always()
+        uses: actions/upload-artifact@v4
+        with:
+          name: windows-ci-evidence-py${{ matrix.python-version }}
+          path: ${{ runner.temp }}/mark-ci-evidence/
+          if-no-files-found: warn
+          retention-days: 14

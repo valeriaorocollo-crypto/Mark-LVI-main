@@ -1,0 +1,8 @@
+# Optional document, hardware, and media capabilities.
+pdfplumber
+PyPDF2
+python-docx
+nvidia-ml-py
+pandas
+pydub
+mediapipe

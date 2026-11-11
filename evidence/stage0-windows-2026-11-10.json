@@ -1,0 +1,79 @@
+{
+  "stage": "0",
+  "collected_at": "2026-11-10",
+  "operating_system": {
+    "name": "Windows 10 Pro for Workstations",
+    "version": "10.0.19045",
+    "build": "19045"
+  },
+  "python_matrix": [
+    {
+      "version": "3.11.9",
+      "tests_run": 474,
+      "tests_passed": 462,
+      "tests_skipped": 12,
+      "compileall": "passed",
+      "setup_dry_run": "passed",
+      "pip_check": "passed",
+      "chromium_smoke": "passed",
+      "chromium_version": "156.0.8078.4"
+    },
+    {
+      "version": "3.12.10",
+      "tests_run": 474,
+      "tests_passed": 462,
+      "tests_skipped": 12,
+      "compileall": "passed",
+      "setup_dry_run": "passed",
+      "pip_check": "passed",
+      "chromium_smoke": "passed",
+      "chromium_version": "156.0.8078.4"
+    },
+    {
+      "version": "3.13.14",
+      "tests_run": 474,
+      "tests_passed": 462,
+      "tests_skipped": 12,
+      "compileall": "passed",
+      "setup_dry_run": "passed",
+      "pip_check": "passed",
+      "chromium_smoke": "passed",
+      "chromium_version": "156.0.8078.4"
+    }
+  ],
+  "playwright": {
+    "python_package": "1.64.1",
+    "bundled_driver": "1.64.0-beta-1791568591000",
+    "compatibility": "same 1.64 major.minor line; Chromium smoke passed in all matrix interpreters",
+    "installed_components": [
+      "Chromium revision 1248",
+      "Chromium headless shell revision 1248",
+      "Firefox revision 1555",
+      "FFmpeg revision 1013"
+    ]
+  },
+  "mark_runtime": {
+    "python": "3.13.14",
+    "process_executable_verified": true,
+    "closed_normally": true,
+    "optional_wake_word": "not available; openwakeword is not installed"
+  },
+  "dashboard_https": {
+    "local_loopback_tls_test": "passed",
+    "client_trusts_temporary_certificate": true,
+    "http_status": 200,
+    "firewall_changed": false,
+    "real_certificate_or_key_modified": false,
+    "asus_certificate_trust": "not verified"
+  },
+  "remote_ci": {
+    "status": "pending",
+    "reason": "This local copy has no Git metadata or remote; the public repository with a matching name was not confirmed to contain this workflow and test suite."
+  },
+  "data_handling": {
+    "contains_credentials": false,
+    "contains_message_bodies": false,
+    "contains_screenshots": false,
+    "contains_personal_file_paths": false
+  }
+}

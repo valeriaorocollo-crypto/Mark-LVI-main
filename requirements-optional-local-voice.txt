@@ -1,0 +1,6 @@
+# Optional local speech engines. Models/voices may be downloaded separately.
+faster-whisper
+piper-tts
+vosk
+edge-tts
+kokoro>=0.9

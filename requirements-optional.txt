@@ -1,0 +1,5 @@
+# Optional integrations and heavier features.
+# Prefer selecting one named group with setup.py instead of installing all.
+-r requirements-optional-integrations.txt
+-r requirements-optional-documents.txt
+-r requirements-optional-local-voice.txt

@@ -1,0 +1,22 @@
+{
+    "os_system": "windows",
+    "language": "es",
+    "assistant_name": "JARVIS",
+    "user_name": "Sergio",
+    "ui_color": "#a0ff00",
+    "hud_style": "core",
+    "wake_word_enabled": true,
+    "plugin_config": {
+        "gmail_control": {},
+        "spotify_control": {}
+    },
+    "plugin_secret_fields": {
+        "gmail_control": [
+            "client_secret"
+        ],
+        "spotify_control": [
+            "oauth_credentials"
+        ]
+    },
+    "news_location": "Peru"
+}

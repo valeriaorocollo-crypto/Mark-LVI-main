@@ -1,0 +1,5 @@
+# Default installation: core MARK capabilities only.
+#
+# Optional integrations and heavy features are listed in
+# requirements-optional.txt and must be installed explicitly.
+-r requirements-base.txt
