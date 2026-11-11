@@ -30,7 +30,7 @@ OPTIONAL_GROUPS = {
 
 
 def _run(label: str, args: list[str]) -> None:
-    print(f"\n▶ {label}")
+    print(f"\n> {label}")
     subprocess.run(args, check=True)
 
 
@@ -46,13 +46,13 @@ def _check_python() -> None:
         # today's Python is a worse first impression than a version that
         # turns out to work fine, and if a wheel really is missing pip says
         # so plainly.
-        print(f"\n⚠️  Python {v[0]}.{v[1]} is newer than the "
-              f"{MAX_PY[0]}.{MAX_PY[1]} this is tested on. Continuing — if a "
+        print(f"\n[!]  Python {v[0]}.{v[1]} is newer than the "
+              f"{MAX_PY[0]}.{MAX_PY[1]} this is tested on. Continuing - if a "
               f"package has no wheel yet, install Python "
               f"{MAX_PY[0]}.{MAX_PY[1]} and run setup with that.")
         return
     if v < MIN_PY:
-        print(f"\n❌ Python {v[0]}.{v[1]} detected — MARK LIV needs at "
+        print(f"\n[X] Python {v[0]}.{v[1]} detected - MARK LIV needs at "
               f"least Python {MIN_PY[0]}.{MIN_PY[1]}.")
         print("   Install a supported version and run setup with it, e.g.:")
         print(f"     py -{MIN_PY[0]}.{MIN_PY[1]} setup.py        (Windows)")
@@ -61,11 +61,38 @@ def _check_python() -> None:
 
 
 def _configure_output() -> None:
-    """Keep setup usable on legacy Windows consoles with limited code pages."""
+    """Make setup output decodable by ANY parent process.
+
+    Two independent encoding decisions used to meet here and disagree:
+
+      * this script's stdout encoding, which Python derives from the ambient
+        locale and from PYTHONUTF8 / PYTHONIOENCODING — so it changed with the
+        machine and the shell;
+      * the parent's decoder, which derives its own locale encoding.
+
+    When the two disagreed, the parent raised UnicodeDecodeError while reading
+    this process's output and the whole installer looked broken — including
+    the clean-copy check, which is exactly where a broken output matters most.
+
+    Forcing the streams to ASCII makes every byte this script writes decodable
+    under any encoding a parent might use. The messages below are written in
+    ASCII for the same reason: a status marker has no business being the
+    reason an installer cannot be read.
+    """
     for stream in (sys.stdout, sys.stderr):
         reconfigure = getattr(stream, "reconfigure", None)
         if reconfigure is not None:
-            reconfigure(errors="replace")
+            try:
+                reconfigure(encoding="ascii", errors="replace")
+            except (ValueError, OSError):
+                # A stream that cannot be reconfigured (a pipe with a fixed
+                # encoding, a captured stream in a test harness) still has to
+                # work. Fall back to replacing only the unencodable
+                # characters rather than failing the install.
+                try:
+                    reconfigure(errors="replace")
+                except (ValueError, OSError):
+                    pass
 
 
 def _check_assets() -> bool:
@@ -73,8 +100,8 @@ def _check_assets() -> bool:
     face = HERE / "core" / "face_model.obj"
     if not face.exists() or face.stat().st_size < 4096:
         print(
-            "\n⚠️  core/face_model.obj is missing or truncated — the avatar will "
-            "fall back to the plain glowing core.\n"
+            "\n[!]  core/face_model.obj is missing or truncated - the avatar "
+            "will fall back to the plain glowing core.\n"
             "    Re-clone the repository, or fetch that one file again."
         )
         return False
@@ -92,7 +119,7 @@ def _check_manifests() -> None:
     missing = [name for name in required if not (HERE / name).is_file()]
     if missing:
         raise SystemExit(
-            "❌ Installation manifests missing: " + ", ".join(missing)
+            "[X] Installation manifests missing: " + ", ".join(missing)
         )
 
 
@@ -125,7 +152,7 @@ def _selected_optional_groups() -> list[str]:
         if argument == "--install-optional":
             if index + 1 >= len(sys.argv[1:]):
                 raise SystemExit(
-                    "❌ --install-optional requires a comma-separated group list."
+                    "[X] --install-optional requires a comma-separated group list."
                 )
             values.extend(
                 item.strip().lower()
@@ -136,7 +163,7 @@ def _selected_optional_groups() -> list[str]:
     unknown = sorted(set(values) - set(OPTIONAL_GROUPS))
     if unknown:
         raise SystemExit(
-            "❌ Unknown optional group(s): " + ", ".join(unknown)
+            "[X] Unknown optional group(s): " + ", ".join(unknown)
             + ". Choose: " + ", ".join(OPTIONAL_GROUPS)
         )
     return list(dict.fromkeys(values))
@@ -144,7 +171,7 @@ def _selected_optional_groups() -> list[str]:
 
 def main() -> None:
     _configure_output()
-    print(f"⚙  MARK LIV setup — detected OS: {OS or 'unknown'}, "
+    print(f"[*]  MARK LIV setup - detected OS: {OS or 'unknown'}, "
           f"Python {sys.version_info[0]}.{sys.version_info[1]}")
     _check_python()
     _check_manifests()
@@ -158,10 +185,10 @@ def main() -> None:
     if dry_run:
         if not _check_assets():
             raise SystemExit(
-                "❌ Dry run failed: required assets are missing or truncated."
+                "[X] Dry run failed: required assets are missing or truncated."
             )
         print(
-            "\n✅ Dry run complete. Manifests and assets are present; no "
+            "\n[OK] Dry run complete. Manifests and assets are present; no "
             "packages, browsers, network connections, or files were changed."
         )
         return
@@ -169,14 +196,14 @@ def main() -> None:
     optional_groups = _selected_optional_groups()
     if optional_groups and "--confirm" not in sys.argv[1:]:
         raise SystemExit(
-            "❌ Optional installation is disabled without --confirm. "
+            "[X] Optional installation is disabled without --confirm. "
             "Review with --plan, then rerun with "
             "`--install-optional group[,group] --confirm`."
         )
 
     # requirements.txt includes only the base set; optional integrations remain
     # opt-in and are documented in requirements-optional.txt.
-    _run("Installing Python dependencies (OS-specific extras auto-filtered)…",
+    _run("Installing Python dependencies (OS-specific extras auto-filtered)...",
          [sys.executable, "-m", "pip", "install", "-r", "requirements.txt"])
 
     for group in optional_groups:
@@ -194,15 +221,15 @@ def main() -> None:
     # a user away from a working app.
     if "--install-browsers" in sys.argv[1:]:
         try:
-            _run("Installing Playwright browsers (chromium + firefox)…",
+            _run("Installing Playwright browsers (chromium + firefox)...",
                  [sys.executable, "-m", "playwright", "install",
                   "chromium", "firefox"])
         except (subprocess.CalledProcessError, FileNotFoundError) as e:
-            print(f"\n⚠️  Playwright browsers were not installed ({e}).")
+            print(f"\n[!]  Playwright browsers were not installed ({e}).")
             print("    Retry later with: python setup.py --install-browsers")
     else:
         print(
-            "\nℹ️  Playwright browsers were not downloaded. Browser automation "
+            "\n[i]  Playwright browsers were not downloaded. Browser automation "
             "is optional; rerun with --install-browsers if you explicitly need it."
         )
 
@@ -215,31 +242,33 @@ def main() -> None:
         except ImportError:
             postinstall = Path(sys.executable).parent / "Scripts" / "pywin32_postinstall.py"
             print(
-                "\n⚠️  pywin32 did not register correctly — desktop-shortcut "
+                "\n[!]  pywin32 did not register correctly - desktop-shortcut "
                 "creation will use a slower fallback. To fix it, run:\n"
                 f'    "{sys.executable}" -m pip install --force-reinstall pywin32\n'
                 f'    "{sys.executable}" "{postinstall}" -install'
             )
     elif OS == "Linux":
         print(
-            "\nℹ️  Linux note — a few voice-controlled OS actions shell out to "
-            "native tools. Install the ones you'll use via your package manager:\n"
-            "    • volume      → pulseaudio-utils   (pactl)\n"
-            "    • brightness  → brightnessctl\n"
-            "    • reminders   → systemd (systemd-run) or 'at'\n"
-            "    • open URLs   → xdg-utils          (xdg-open)"
+            "\n[i]  Linux note - a few voice-controlled OS actions shell out "
+            "to native tools. Install the ones you'll use via your package "
+            "manager:\n"
+            "    - volume      -> pulseaudio-utils   (pactl)\n"
+            "    - brightness  -> brightnessctl\n"
+            "    - reminders   -> systemd (systemd-run) or 'at'\n"
+            "    - open URLs   -> xdg-utils          (xdg-open)"
         )
     elif OS == "Darwin":
         print(
-            "\nℹ️  macOS note — volume, brightness and reminders use the built-in "
+            "\n[i]  macOS note - volume, brightness and reminders use the "
+            "built-in "
             "'osascript' / LaunchAgents, so no extra tools are required.\n"
             "    For Safari automation only: python -m playwright install webkit"
         )
 
-    print("\n✅ Setup complete!")
+    print("\n[OK] Setup complete!")
     print("   1) Launch it:  python main.py")
     print("   2) Paste your free Gemini API key when the setup screen appears.")
-    print("   3) (Optional) Enable 'Hey Jarvis' from ⚙ → WAKE WORD.")
+    print("   3) (Optional) Enable 'Hey Jarvis' from SETTINGS -> WAKE WORD.")
 
 
 if __name__ == "__main__":

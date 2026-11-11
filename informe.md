@@ -1,239 +1,494 @@
-# Informe tecnico de MARK LVI
+# Informe final de situación — MARK LVI
 
-**Fecha de revision:** 2026-11-09  
-**Plataforma observada:** Windows, Python 3.13.14  
-**Referencia de producto:** `ROADMAP_CONTROL_UNIVERSAL.md`
+**Fecha de consolidación:** 11 de noviembre de 2026
+**Base examinada:** árbol de trabajo local de `Mark-LVI-main`, commit HEAD
+`9c9864e` (`Merge branch 'main'...`) y modificaciones locales presentes durante
+la revisión.
 
-## Veredicto ejecutivo
+## 1. Resumen ejecutivo
 
-MARK no necesita borrarse y rehacerse desde cero. Tiene una base aprovechable: registro de acciones, contratos de resultado, confirmaciones, adaptador UI Automation, planes acotados, almacenamiento seguro de credenciales y varios pilotos. Pero hoy es un **prototipo de asistente con automatizaciones parciales**, no un controlador universal fiable. No está cerca de una paridad cuantificable del 99.8% con JARVIS, y “control absoluto” no es una meta tecnica alcanzable de forma segura: las APIs, permisos, interfaces de accesibilidad y politicas de cada aplicacion imponen limites reales.
+MARK LVI es un asistente de escritorio en Python/PyQt con voz, proveedor
+Gemini, herramientas locales, automatización Windows, navegador, procesamiento
+de archivos, memoria, plugins, dashboard y un planificador de tareas. El
+proyecto ya tiene varias defensas importantes: clasificación de efectos,
+confirmaciones en el HUD, validación de argumentos, resultados que distinguen
+éxito verificado de incertidumbre, planes secuenciales, auditoría de metadatos,
+controles de archivo con undo y plugins que requieren confianza explícita.
 
-La poda recomendada es **congelar nuevas integraciones y cerrar primero los efectos no verificados**. Se corrigieron los bypasses de clasificacion, los fallos principales de sobreescritura/escritura/undo y se deshabilito la mensajeria generica ciega. Siguen pendientes la validacion real de WhatsApp, los clics heurísticos de Steam, los cambios de firewall al arrancar y el parche global de `subprocess.Popen`. La politica de permisos reutilizables solicitada tampoco existe todavia. Ademas, el informe de seguridad existente contiene texto de una solicitud y de un analisis anterior, por lo que ya no funciona como documento de control limpio.
+**Conclusión:** hay una base funcional que se debe endurecer y completar, no
+una razón para empezar desde cero. El producto está en fase de prototipo
+avanzado/pilotos; no es todavía un agente universal ni un sistema que deba
+ejecutar tareas sensibles desatendido. Algunas capacidades tienen pruebas
+sintéticas sólidas; eso no demuestra que funcionen en cada versión real de
+Windows, aplicación, cuenta, idioma o escala de pantalla.
 
-No recomiendo cortar toda la rama. Si recomiendo cortar el enfoque de “cualquier clic/tecla sirve para cualquier efecto” y el supuesto de que basta con sumar conectores. El nucleo de acciones, los resultados y los planes se pueden conservar despues de cerrar sus contratos y reforzar las pruebas.
+Las prioridades inmediatas son:
 
-## Alcance y honestidad
+1. Poner la captura de pantalla/cámara solicitada por el modelo bajo una
+   política de consentimiento y un indicador visible; no tratarla como una
+   lectura inocua solo por llevar el nombre `screen_process`.
+2. Corregir el permiso de `screen_find`: el texto del HUD afirma que dura hasta
+   cerrar MARK, pero el código lo vence en una hora; además, el alcance
+   `active_screen` no identifica una ventana o tarea y se reutiliza sin
+   comparar el objetivo de cada solicitud.
+3. Mostrar los efectos reales de cada paso del plan. El campo `effect` se
+   calcula hoy a partir del estado `"started"`/`"unknown"` y la vista previa no
+   presenta efectos por paso.
+4. Mantener bloqueadas las integraciones externas cuyo resultado real no está
+   verificado, especialmente envío de mensajes. No repetir acciones ambiguas.
+5. Reconciliar evidencia y compatibilidad: la suite actual pasó localmente en
+   Python 3.12; la matriz remota citada por los documentos pertenece a commits
+   previos, no al árbol de trabajo modificado de esta revisión.
 
-El inventario actual tiene **125 archivos Python**: 77 fuera de `tests/` y 48 dentro. La compilacion de sintaxis de todos los modulos paso. Hice inspeccion profunda de las rutas con mayor impacto (politica, archivos, mensajeria, control de escritorio, carga de acciones/plugins, dashboard, busqueda, monitor, planificador, Spotify/Gmail, proveedor de voz y configuracion), y busquedas estaticas sobre el resto. Esto **no equivale a una lectura manual, linea por linea, de los 125 archivos** ni a una certificacion de seguridad. No afirmo haber encontrado todos los defectos posibles.
+La hoja de ruta de ejecución y puertas está en
+[plan_seguimiento.md](./plan_seguimiento.md). El catálogo de oportunidades de
+producto está en [ideas.md](./ideas.md).
 
-No se inspecciono ni reproduce aqui el contenido de credenciales locales. `git` no esta disponible en el terminal, asi que no pude establecer el estado de cambios locales del repositorio. La revision no accedio a cuentas, no envio mensajes, no instalo dependencias ni cambio configuraciones del sistema.
+## 2. Alcance, método y límites
 
-### Evidencia ejecutada
+### Revisado
 
-| Comprobacion | Resultado | Que demuestra y que no |
+- Estructura del repositorio y estado de Git.
+- Código de despacho y política (`core/action_policy.py`,
+  `core/tool_audit.py`, `core/confirm.py`).
+- Permisos de sesión (`core/session_grants.py`) y controles relacionados del
+  HUD.
+- Captura visual en `main.py` y `actions/computer_control.py`.
+- Planificador (`core/task_plan.py`), carga y confianza de plugins
+  (`core/plugin_loader.py`).
+- Rutas de archivos, mensajería, Steam y dashboard, además de manifiestos de
+  dependencias y workflow Windows.
+- Documentación previa: `SECURITY-REVIEW.md`,
+  `ROADMAP_CONTROL_UNIVERSAL.md`, este informe y
+  `plan_seguimiento.md`.
+- Suite completa de unittest disponible en el entorno local actual.
+
+### No realizado
+
+- No se leyeron manualmente, línea por línea, los 129 archivos Python.
+- No se hizo fuzzing, prueba de penetración, revisión completa de dependencias,
+  prueba de malware ni auditoría criptográfica.
+- No se inició sesión en proveedores, no se enviaron mensajes, no se hicieron
+  compras/instalaciones y no se cambiaron firewall o ajustes de Windows.
+- No se probó cada aplicación real ni todos los dispositivos de audio.
+- No se certificó Windows 11, Python 3.11/3.13 o una instalación limpia en este
+  corte.
+- Los resultados guardados en la documentación y en `evidence/` se conservan
+  como antecedentes, pero no se presumen como una ejecución del checkout
+  actual.
+
+### Cómo leer el nivel de certeza
+
+- **Observado ahora:** comprobado directamente en código/estado local o en la
+  ejecución local de pruebas indicada abajo.
+- **Registrado previamente:** consta en la documentación/evidencia ya existente;
+  no se volvió a reproducir en esta revisión.
+- **Pendiente:** falta una prueba que permita elevar el estado.
+
+## 3. Línea base real del árbol revisado
+
+| Dato | Resultado actual | Interpretación |
 |---|---|---|
-| `Python313\python.exe -m compileall -q .` | Correcto; revalidado | No hay errores de sintaxis detectables; no valida tipos ni comportamiento. |
-| `Python313\python.exe setup.py --dry-run` | Correcto; revalidado | Manifiestos y activo presentes. El dry-run no prueba inicio completo, audio, OAuth ni compatibilidad de aplicaciones reales. |
-| `Python313\python.exe -m unittest discover -s tests -q` | **439 casos: OK; 13 omitidos** | Suite completa aprobada en Python 3.13.14 despues de las correcciones de Etapas 1-3. Los 13 omitidos son opt-in; no cuentan como validacion de esos entornos. |
-| `Python313\python.exe -m pip check` | Sin dependencias rotas | Verifica el entorno actual, no otras versiones de Python ni una instalacion limpia. |
-| Chromium headless | `156.0.8078.4`, launch/close correcto | El paquete Python reporta Playwright 1.64.1; `install --list` muestra un identificador beta interno. La automatizacion funciona en este entorno; el workflow registra ambos para seguimiento. |
-| HTTPS del dashboard | Certificado/clave generados en un temporal y aceptados por `SSLContext.load_cert_chain`; segunda llamada idempotente | No se modifico `config/certs`, no se abrio puerto ni se verifico confianza desde un telefono/cliente remoto. |
-| CI | `.github/workflows/windows-tests.yml` agregado para Windows/Python 3.11-3.13 | YAML parseado y pasos reproducidos localmente en 3.13.14; la ejecucion remota de GitHub Actions aun esta pendiente. |
-| `python -m unittest discover -s tests -p test_tool_audit.py` | 12 correctas | Pasa el conjunto existente, pero no cubre los casos peligrosos reproducidos abajo. |
-| `get_errors` del editor | Sin diagnosticos | No sustituye a Ruff, Pyright ni una matriz de CI; no se encontro configuracion automatizada de lint/tipos/CI en los archivos enumerados. |
-| Reproduccion en carpeta temporal | Confirmada y corregida | Antes, `copy_file` reemplazaba el destino y undo lo eliminaba. Ahora rechaza destinos existentes; los tests verifican que el original queda byte-identico y que no se registra undo. |
-| Python 3.13 / `pywin32` | `import win32com.client` correcto; `pywin32_postinstall.py` existe | El aviso de setup no impide importar COM. El registro de componentes/atajos sigue siendo opcional mientras no falle una funcion que lo necesite. |
-| Avisos durante tests | Starlette advierte que `TestClient` con `httpx` esta deprecado; una prueba fuerza intencionalmente fallo de certificado para asegurar que no hay downgrade HTTP | No causaron fallos. El certificado real se genero y cargo en un temporal; falta probar el servidor HTTPS desde un cliente local. |
+| Rama/HEAD | `9c9864e` (merge local visible en el log) | La rama contiene trabajo previo, pero el checkout no está limpio. |
+| Cambios locales | `SECURITY-REVIEW.md`, `informe.md`, `plan_seguimiento.md`, `setup.py`, `ui.py` modificados; `ideas.md` sin seguimiento | No asumir que esos cambios están publicados ni descartarlos. |
+| Código Python | 129 archivos en el árbol examinado, contando `tests/` | Recuento de archivos, no medida de madurez. |
+| Pruebas | 51 archivos de prueba encontrados | Hay cobertura amplia, pero también skips y dependencias de entorno. |
+| Ejecución local de unittest | Python 3.12.10: 485 pruebas, 0 fallos, 0 errores, 12 omitidas | Es la validación reproducible ejecutada durante esta consolidación. Las omitidas no cuentan como aprobadas. |
+| Warnings vistos en esa ejecución | Aviso deprecado `Starlette TestClient`/`httpx`, aviso `pynvml` y avisos UIA/asyncio del entorno | No hicieron fallar la suite; deben revisarse, no ocultarse. |
+| Workflow | `.github/workflows/windows-tests.yml`, matriz Python 3.11/3.12/3.13 | Existe CI declarada. Debe ejecutarse sobre el commit que se vaya a entregar. |
+| Evidencia versionada | `evidence/stage0-windows-2026-11-10.json` | Registra un corte anterior: 474 pruebas, 13 omitidas por intérprete, y el run CI 42948215095 en un commit previo. |
+| Otra CI reportada en documentos | Run 42951554253 aparece como verde para Python 3.11–3.13 | Es un resultado histórico citado por los documentos; confirmar en GitHub y no confundirlo con `9c9864e` ni con los cambios locales. |
+| `ui_holo.py` | No está presente ni versionado en el árbol actual | En la suite se observó el fallback “Holographic chrome unavailable”; la interfaz usa paneles simples. El módulo cosmético es opcional, pero hoy no está incluido. |
 
-El numero de pruebas de esta ejecucion no coincide con los resultados previos citados en `SECURITY-REVIEW.md` o el roadmap. No deben presentarse resultados historicos como resultado de este checkout.
+La discrepancia entre `485/12` en esta máquina, `474/13` en el JSON de Etapa 0
+y otras cifras en documentos antiguos es de **cortes distintos**, no evidencia
+de que se hayan ejecutado todas sobre el mismo código. El número válido siempre
+debe citar intérprete, checkout/commit, comando y skips.
 
-## Hallazgos priorizados
+### Evidencia histórica que se conserva como antecedente
 
-### P0 — la politica de riesgo no protege efectos opacos
+Estos resultados aparecen en `SECURITY-REVIEW.md`, `ROADMAP_CONTROL_UNIVERSAL.md`
+o `plan_seguimiento.md`; no se repitieron todos durante este corte:
 
-**Estado: corregido para el alcance P0 de despacho y confirmacion.** Antes de la correccion, en `core/tool_audit.py`, varias acciones de control se procesaban primero como “rutinarias”. Si el texto del objetivo no contenia una lista de palabras sensibles, la clasificacion devolvia `state_change`, incluso si la operacion usaba teclado generico, coordenadas o arrastre. `core/action_policy.py` ejecutaba acciones de ese riesgo sin confirmacion central.
+| Prueba/escenario | Resultado consignado | Límite |
+|---|---|---|
+| CI Windows run 42948215095 | Python 3.11/3.12/3.13 reportados en verde para el commit `bd6c9cc...`; artefactos por versión | Antecede al HEAD local y a cambios no confirmados. |
+| CI Windows run 42951554253 | Documentado en el plan como verde para Python 3.11/3.12/3.13, commit `2d21993...` | Verificar directamente el run/artefactos antes de usarlo como release gate. |
+| Archivos | Se consignan ACL denegada, medio extraíble, SMB UNC y ENOSPC en VHDX temporal; el original se preservó | Escenarios específicos; no garantizan todo volumen/ACL/fallo. |
+| Cancelación | Se registra un flujo HUD `Awaiting confirmation` → `Cancelled` sin crear el archivo de prueba | Prueba manual acotada; el test automático sigue siendo necesario. |
+| UI Automation | 10 pruebas opt-in en ventana sintética y 19 pruebas del driver WhatsApp reportadas | No es una prueba de compatibilidad completa con una aplicación real. |
+| WhatsApp | El historial incluye intentos con destinatario/previsualización; un intento real quedó `failed` o `unverified`; no hay comprobación independiente reproducible de entrega | Mantener bloqueado/no reintentar un envío de resultado ambiguo. |
+| Steam | Se abrió el diálogo real de instalación y la persona debía completar la selección | No se completó instalación ni se probó compra. |
+| Dashboard | Certificado temporal en loopback validado por cliente confiado con HTTP 200; cliente sin confianza rechaza; dispositivo ASUS llegó a la pantalla de acceso | Confianza del certificado en el dispositivo y pairing real no validados. |
+| Integraciones | Spotify reportado reproduciendo una pista y con estado visible; Gmail cuenta/OAuth real todavía pendiente | Resultado histórico acotado y no equivalente a matriz multi-versión. |
 
-Se reprodujo directamente antes del cambio:
+## 4. Arquitectura y capacidades
 
-| Entrada | Riesgo devuelto |
-|---|---|
-| `computer_control: press`, tecla `delete` | `state_change` |
-| `computer_control: hotkey`, `shift+delete` | `state_change` |
-| `computer_control: click`, coordenadas `(500, 300)` | `state_change` |
-| `computer_control: click`, objetivo “Alquilar ahora” | `state_change` |
-| `computer_control: click`, objetivo “Comprar ahora” | `high` |
+### Componentes principales
 
-La correccion elimino la rama heuristica general y usa la tabla explicita de riesgos para acciones globales. Ahora click/type/press/hotkey/paste/drag genericos quedan en `high`; tambien la lectura del clipboard y la busqueda visual `screen_find`, que envia capturas a Gemini. El dispatcher espera HUD antes de ejecutar. `screen_click` muestra que la pantalla sera enviada a Gemini y pide aprobacion antes de la primera captura; despues revalida el objetivo antes del clic. Una coordenada o etiqueta no rebajan el riesgo. Para no introducir confirmaciones por cada paso rutinario, el foco/activacion de ventana y controles UIA ordinarios con selector exacto mantienen su tratamiento local; etiquetas UIA sensibles siguen elevandose a `high`. Tambien se vinculo el contexto de confirmacion a la firma exacta de herramienta y argumentos: confirmar una accion de una herramienta ya no autoriza otra llamada distinta de esa misma herramienta. `code_helper auto` delega la aprobacion a su handler, que presenta la vista previa del archivo generado.
+- `main.py`: ciclo principal, conexión al proveedor, despacho de herramientas,
+  memoria, tareas, captura y funciones enlazadas al estado de sesión.
+- `ui.py`: ventana PyQt y HUD; concentra pantalla, ajustes, integraciones,
+  paneles de tareas y dashboard.
+- `actions/`: herramientas por capacidad (navegador, escritorio, archivos,
+  correo/mensajes, búsqueda, Steam, multimedia, sistema).
+- `core/`: política/registro de acciones, confirmación, resultados, plugins,
+  voz, planes, undo, identidad y diagnóstico.
+- `providers/`: pipeline de voz/modelo, proveedores STT/LLM/TTS y registro.
+- `plugins/`: conectores instalables, como Gmail, Spotify y WhatsApp.
+- `memory/`: configuración, memoria y almacenamiento de preferencias/secrets.
+- `dashboard/`: control remoto local/LAN, autenticación, pairing y TLS.
+- `tests/`: pruebas unittest; `.github/workflows/windows-tests.yml` ejecuta la
+  matriz Windows.
 
-**Impacto encontrado antes de corregir:** una tecla o clic sobre la ventana equivocada podia borrar, enviar, comprar, guardar o cambiar configuracion sin que la politica lo supiera. El hito 2 y la salida declarada de la Fase 1 siguen sobrestimados hasta verificar todos los caminos, no solo los casos nuevos.
+### Inventario funcional encontrado
 
-**Validacion del cambio:** las suites focales de politica, UIA, `code_helper`, archivos, mensajeria y dispatch de planes/plugins pasaron; la suite completa registro **439 aprobadas y 13 omitidas**. Las pruebas cubren Delete/Shift+Delete, coordenadas, click sin objetivo, acciones del navegador y ajustes, objetivo UIA “Alquilar ahora”, clipboard, vision antes/despues de HUD, aprobacion exacta, flujo `code_helper auto`, undo condicionado y rechazo de plataformas no verificadas. `screen_process` y la politica de consentimiento/retencion de capturas proactivas siguen pendientes de Etapa 7.
+| Grupo | Módulos/ejemplos presentes | Alcance que se puede afirmar |
+|---|---|---|
+| Voz/modelo | `providers/audio.py`, `providers/engine_pipeline.py`, `providers/llm_openai.py`, `providers/stt_*`, `providers/tts_*`, `core/gemini.py` | Hay abstracciones y caminos de voz/modelo; cada combinación de dispositivo/proveedor necesita su propio smoke test. |
+| Escritorio | `actions/computer_control.py`, `computer_settings.py`, `desktop.py`, `open_app.py`, `screen_processor.py`, `system_monitor.py` | Acciones locales concretas y UIA/visión parcial; no equivalen a automatización fiable de cualquier ventana. |
+| Navegación/información | `browser_control.py`, `web_search.py`, `weather_report.py`, `flight_finder.py`, `youtube_video.py`, `video_player.py` | Búsqueda y automatización web por caminos específicos; las fuentes, fechas y resultados necesitan verificación. |
+| Archivos/contenido | `file_controller.py`, `file_processor.py` | Acciones locales de archivos y lectura/procesamiento de formatos con límites; no es WinRAR ni acceso ilimitado al disco. |
+| Productividad | `reminder.py`, `background_monitor.py`, `proactive.py`, `task_planner.py`, `meet_control.py` | Recordatorios, monitoreo y coordinación de tareas; llamadas/reuniones no deben darse por completadas por abrir una página. |
+| Desarrollo/juegos | `code_helper.py`, `dev_agent.py`, `game_updater.py` | Asistencia de código y algunas acciones de Steam; revisar workspace/diff y mantener instalación final bajo control humano. |
+| Plugins | `plugins/gmail_control.py`, `spotify_control.py` y `_whatsapp_core.py`; mensajería declarada desde `actions/send_message.py` | Pilotos con estados distintos; cada uno necesita tests, permisos y matriz propia. |
+| Memoria/configuración | `memory/memory_manager.py`, `config_manager.py` | Preferencias y memoria locales; retención, borrado y sincronización deben especificarse por clase de dato. |
+| Dashboard | `dashboard/server.py` y `dashboard/static/` | Interfaz remota con pairing/TLS; falta validar identidad desde cada cliente que se vaya a soportar. |
 
-### P0 pendiente — permisos reutilizables solicitados
+### Áreas con mayor costo de cambio
 
-`core.confirm.request` crea una confirmacion por llamada; no guarda una concesion reusable. El planificador si permite una sola aprobacion para un plan y sus firmas exactas, pero las acciones sensibles sueltas vuelven a preguntar en cada invocacion. Por tanto, el requisito nuevo de “pedir permiso solo la primera vez” **no esta implementado**.
+Recuento actual de líneas (aproximado, obtenido del checkout local):
 
-La implementacion segura recomendada es ofrecer “recordar durante esta sesion” solo para una capacidad y objetivo concretos, con expiracion y revocacion visible. No debe inferirse esa concesion de un CONFIRM normal ni persistirse globalmente. Falta definir si el alcance por sesion y objetivo satisface el requisito; no pasar a P2 hasta resolverlo y probar que no autoriza otros destinatarios, rutas o efectos.
-
-### P0 — copia con sobrescritura y deshacer destructivo (corregido)
-
-Antes de la correccion, `copy_file` reemplazaba un destino existente y su undo lo eliminaba en lugar de restaurarlo. La reproduccion temporal confirmo que un destino con `original` acababa borrado tras copiar y deshacer. Ahora la copia rechaza destinos existentes y los archivos nuevos se crean con modo exclusivo, cerrando tambien la carrera entre la comprobacion y la creacion.
-
-**Validacion:** tests temporales verifican que el destino preexistente queda byte-identico y que no se registra undo; una copia a un destino nuevo conserva el origen y crea los bytes esperados. Falta completar la matriz para copias de directorios y cambios posteriores del contenido copiado.
-
-### P1 — escritura/reemplazo sin undo fiable (corregido en la ruta local de texto)
-
-Antes de la correccion, `create_file` podia interpretar una lectura fallida como archivo inexistente y luego borrarlo al deshacer; `write_file` podia ignorar bytes invalidos y escribir sobre binarios o archivos demasiado grandes para respaldar. Ahora ambas funciones exigen un snapshot UTF-8 dentro del limite de 1 MB, rechazan enlaces simbolicos/targets no regulares y no escriben si el respaldo falla. La escritura usa un temporal en el mismo directorio y reemplazo atomico; undo verifica contenido e identidad y deja intacto un archivo que haya cambiado despues.
-
-**Validacion:** las regresiones cubren binario con NUL, archivo existente mayor al limite, creacion nueva, restauracion byte-exacta y modificacion posterior al write. **Pendiente:** fallos de disco/permisos, ACL y volumenes de red; undo automatico de copias de directorios; y pruebas de interrupcion entre snapshot y reemplazo. El acceso sigue restringido al perfil permitido.
-
-### P1 — envio generico de mensajes ciego (deshabilitado; WhatsApp parcial)
-
-Antes de la correccion, `_desktop_send` y los flujos browser de Instagram/Messenger seleccionaban destinatarios y enviaban texto con secuencias de teclas sin verificar ventana o conversacion. Ahora Telegram, Signal, Discord, Instagram, Messenger y servicios desconocidos se rechazan antes del HUD: no se llama a PyAutoGUI, al navegador ni al sender en background. El helper heredado `_desktop_send` es un stub que devuelve fallo sin escribir.
-
-WhatsApp conserva un driver distinto con preflight y lectura posterior, pero el roadmap documenta que la prueba real no pudo activar inequivocamente la fila del contacto y una exploracion abrio el chat propio. Su validacion sigue incompleta; no se debe presentarlo como envio fiable ni permitir grants reutilizables para WhatsApp hasta verificar conversacion, destinatario y lectura posterior en una matriz de versiones.
-
-**Validacion:** una regresion cubre Telegram, Signal, Discord, Instagram, Messenger y plataforma desconocida; todas fallan sin HUD ni llamadas a sender/browser. La suite general registro **439 aprobadas y 13 omitidas**. No reactivar ninguna plataforma sin un adaptador especifico que verifique destinatario y resultado.
-
-### P1 — integracion Steam incluye clic a ciegas
-
-En `actions/game_updater.py`, `_click_first_profile_by_screenshot` busca una zona de color como aproximacion a un avatar; si no encuentra ese patron, hace clic en una coordenada estimada y devuelve exito. Hay otros clics por coordenadas en el flujo de instalacion. Esto contradice el principio de “detenerse ante ambiguedad” del roadmap y es especialmente delicado en una aplicacion con perfiles, dialogs y descargas.
-
-**Corte recomendado:** eliminar el fallback “clicking by guess”. Si UIA o un control semantico no identifican un unico objetivo, detenerse y pedir intervencion. Para instalar/actualizar, previsualizar juego, cuenta, disco y espacio, y verificar el estado real despues.
-
-### P1 — dashboard con privilegios y cambios colaterales de red
-
-`dashboard/server.py` configura acceso de red en segundo plano. En Windows puede solicitar elevacion UAC, crear reglas de firewall, borrar reglas de bloqueo existentes para Python y cambiar perfiles `Public` a `Private`. `main.py` crea y sirve el dashboard durante la ejecucion. Aunque la funcion sea optativa desde el punto de vista de producto, una decision de conectividad no debe modificar varios ajustes del sistema como efecto lateral de iniciar el asistente.
-
-El dashboard usa certificado autofirmado. TLS cifra la conexion, pero por si solo no prueba que el telefono se conecto al servidor esperado. El codigo deriva clave de emparejamiento con PBKDF2 y usa AES-GCM; eso mejora protecciones, pero no elimina los riesgos de confianza de certificado, exposicion LAN, comandos remotos ni cambios del firewall.
-
-**Corte recomendado:** deshabilitar cambios automaticos del firewall/perfil. Mostrar una vista previa exacta y ofrecer instrucciones manuales o una regla estrictamente limitada al puerto, perfil y ejecutable elegidos. El control remoto debe ser opt-in, apagado por defecto y con autenticacion y revocacion verificables.
-
-### P1 — parche global de `subprocess.Popen`
-
-Al importar `main.py` en Windows, se sustituye `subprocess.Popen` globalmente, se agrega `CREATE_NO_WINDOW` a todas las llamadas y se descarta `startupinfo`. Esto modifica tambien el comportamiento de librerias que no pertenecen a MARK y hace que depurar o controlar procesos concretos sea menos fiable.
-
-**Corte recomendado:** eliminar el monkey patch. Pasar `creationflags` solo a las llamadas locales que realmente requieran ocultar consola y mantener intactos los parametros del llamador.
-
-### P1 — plugins Python sin aislamiento
-
-`core/plugin_loader.py` importa codigo Python de plugins en el mismo proceso de MARK. La clasificacion como `external` y la confirmacion ocurren durante el despacho, pero no aislan el codigo: el modulo puede ejecutar instrucciones durante su importacion y un plugin activo tiene los permisos del proceso. Un HUD no protege contra efectos laterales de importacion ni contra codigo hostil o defectuoso.
-
-**Corte recomendado:** tratar plugins como codigo confiable instalado por el usuario, no como extensiones seguras por tener un permiso. Para terceros, usar proceso separado con IPC, permisos por capacidad, timeout/cancelacion y formato de datos acotado. No cargar plugins no confiables en el proceso principal.
-
-### P2 — la suite depende de un entorno reproducible y algunas pruebas necesitan aislamiento
-
-El primer intento se ejecuto con Python 3.14 y dependencias ausentes, y por eso produjo fallos de importacion y pruebas que no alcanzaron la confirmacion. La repeticion inicial con Python 3.13.14 aprobo 427 pruebas; despues se añadieron tests HTTPS, politicas, operaciones de archivo y bloqueo de mensajeria ciega, llevando la suite a **439 aprobadas y 13 omitidas**. Por tanto, los fallos iniciales eran del entorno equivocado y **no son un fallo actual reproducible con el interprete soportado**. La matriz 3.11-3.13 aun no tiene resultados remotos de CI.
-
-**Corte recomendado:** conservar Python 3.13.14 como entorno verificado, incorporar CI para el rango declarado y separar tests puros de las suites opt-in de escritorio, audio y browser. Las pruebas de politica deben simular adaptadores y comprobar el gate sin depender de un dispositivo o ventana real.
-
-## Arquitectura, mantenimiento y obsolescencia
-
-### Monolitos y responsabilidades superpuestas
-
-Medicion actual de lineas en los modulos mas grandes:
-
-| Archivo | Lineas | Problema de mantenimiento |
+| Archivo | Líneas | Efecto sobre mantenimiento |
 |---|---:|---|
-| `ui.py` | 6.713 | HUD, settings, dashboard, plugins y controles en un unico modulo. Cambios pequeños tienen alto riesgo de regresion. |
-| `main.py` | 2.736 | Orquestacion de voz, modelo, herramientas, eventos y dashboard, ademas del parche global de procesos. |
-| `actions/browser_control.py` | 1.696 | Ciclo de vida del navegador, navegacion, formularios, selectors y vision demasiado acoplados. |
-| `actions/file_processor.py` | 1.405 | Muchas transformaciones con formatos, dependencias y contratos de salida distintos. |
-| `dashboard/server.py` | 1.318 | HTTP/WebSocket, autenticacion, TLS, firewall, uploads y control remoto en un unico servidor. |
-| `actions/computer_control.py` | 1.130 | UIA, coordenadas, procesos, portapapeles, captura y teclado mezclados. |
-| `actions/computer_settings.py` | 1.075 | Muchas rutas por SO, subprocess, teclas y ajustes del sistema. |
-| `actions/game_updater.py` | 1.063 | Steam discovery, scraping, instalacion, captura, clics y seguimiento en el mismo modulo. |
-| `providers/engine_pipeline.py` | 1.044 | STT, VAD, LLM, llamadas de herramientas, TTS, historial y tiempos. |
-| `core/task_plan.py` | 920 | Validacion, estado, aprobacion, persistencia, recuperacion y progreso acoplados. |
-| `memory/config_manager.py` | 885 | Configuracion general, credenciales, migraciones y almacenamiento seguro en un archivo. |
+| `ui.py` | 7.217 | UI, ajustes e integraciones en una superficie grande; una extracción exige pruebas focales. |
+| `main.py` | 2.726 | Orquestación de sesión y herramientas concentrada. |
+| `actions/browser_control.py` | 1.712 | Navegador, DOM, formularios y operaciones de página acoplados. |
+| `actions/file_processor.py` | 1.405 | Lectura/transformación de varios formatos. |
+| `actions/computer_settings.py` | 1.094 | Controles y caminos de sistema operativo. |
+| `providers/engine_pipeline.py` | 1.044 | Pipeline de proveedor/voz y tiempos. |
+| `dashboard/server.py` | 1.049 | Varios límites de red/servidor en un módulo. |
+| `core/task_plan.py` | 920 | Validación, preview, ejecución, recuperación e historial. |
+| `memory/config_manager.py` | 921 | Configuración, migraciones y almacenamiento sensible. |
 
-No es un argumento para reescribir todo en microservicios. Es un problema de limites de responsabilidad y facilidad para probar. Extraer por contratos estables, despues de fijar regresiones, y no por tamaño solamente.
+No se justifica una reescritura por tamaño. Primero fijar los contratos y
+pruebas, después extraer por responsabilidad con cambios pequeños.
 
-### Duplicacion y deriva de conceptos
+### Madurez funcional por capacidad
 
-- Acciones de ventana/teclado aparecen en `actions/computer_control.py`, `actions/computer_settings.py`, `actions/desktop.py` y `actions/open_app.py`; cada ruta puede tener validacion, espera y resultado distinto. Definir un solo adaptador OS y delegar, sin multiplicar controladores.
-- `actions/send_message.py` mezcla transporte verificable de WhatsApp con automatizacion generica no verificable de otras apps. Separar por conectores y no exponer una capacidad universal que no existe.
-- `core/action_loader.py` y `core/plugin_loader.py` implementan esquemas parecidos de descubrimiento y despacho. Hay duplicacion, pero fusionarlos sin aclarar el nivel de confianza de cada uno podria empeorar el aislamiento.
-- El producto aparece como MARK, JARVIS y “MARK LIV” en codigo, UI, dashboard e instalador. Elegir un nombre canonico y dejar aliases solo donde sean necesarios.
-- `actions/computer_settings.close_app` es una negativa heredada, no una implementacion. Esta comentada extensamente y direcciona a `computer_control`; mantenerla como compatibilidad puede ser razonable, pero debe aparecer como deprecated y no como capacidad activa.
-
-### Dependencias y compatibilidad
-
-- `setup.py` marca Python 3.11–3.13 como el rango soportado y permite continuar con versiones posteriores bajo advertencia. Esta revision se ejecuto con Python 3.13.14 y la suite aprobo; no se certificaron Python 3.11/3.12 ni versiones posteriores a 3.13.
-- `requirements-base.txt` incluye capacidades pesadas o de integracion (Playwright, OpenCV, `yt-dlp`, PyAutoGUI, Pyperclip y procesamiento de presentaciones) aunque la documentacion lo llama “core”. Eso aumenta instalacion y superficie de fallos aunque el usuario solo quiera voz/chat. Separar base minima de extras reales.
-- Varias dependencias no tienen limites de version, entre ellas `yt-dlp`, `pyautogui`, `pyperclip` y `python-pptx`. Sin lockfile ni resolucion fijada, dos instalaciones del mismo commit pueden diferir.
-- `setup.py --dry-run` solo valida que existan manifiestos/activos. No comprueba resolver, instalar, importar el conjunto, dispositivos de audio o iniciar la aplicacion limpia.
-- El proyecto anuncia soporte para varios sistemas operativos, pero `core/ui_adapter.py` declara Windows como unico adaptador de UI Automation. Las acciones multiplataforma tienen ramas distintas y no hay evidencia equivalente de compatibilidad. Si la meta inmediata es Windows, estrechar el soporte documentado y probar Windows en una matriz real es mas sensato que fingir paridad multiplataforma.
-
-### Documentacion y estado de hoja de ruta
-
-`SECURITY-REVIEW.md` empieza como una nota acotada al dashboard, pero despues de la seccion de limites contiene separadores y texto pegado de una solicitud/informe anterior. Mezcla alcance, hallazgos, comentarios de trabajo y cifras de versiones distintas; debe sanearse y separar el registro de hallazgos de las notas del usuario.
-
-La hoja de ruta llama completadas las Fases 1–4 dentro de alcances sinteticos/locales. La clasificacion de riesgo reproducida invalida la afirmacion de que las acciones tienen proteccion suficiente. “100% de hitos” es un porcentaje de checklist, no un porcentaje de compatibilidad, seguridad ni madurez del producto. La Fase 5 sigue parcial; las Fases 6–7 tambien. Los valores publicados de pruebas/archivos deben generarse desde CI o eliminarse como numeros manuales.
-
-## Cobertura real de la vision por aplicacion
-
-| Capacidad solicitada | Estado observado | Dictamen |
+| Capacidad | Estado defendible hoy | Lo que no debe prometerse |
 |---|---|---|
-| Spotify | Plugin OAuth PKCE y alternativa UIA Windows. El roadmap informa una prueba real de una pista, verificada por el estado UI de Spotify. | Piloto util, pero no prueba sonido audible, otras versiones/idiomas ni todos los comandos. No es control total. |
-| Navegador | Playwright con perfil de automatizacion separado/persistente y control generico; el modulo no carga si Playwright falta. | Parcial. Sesiones/cookies no equivalen a las del navegador personal; sitios y controles complejos no heredan compatibilidad. |
-| Sistema operativo | Acciones de teclado/raton, ventana, audio/brillo, algunos procesos y UIA. | Control parcial. La automatizacion generica es la brecha P0; no entregar privilegios de administrador por defecto. |
-| Archivos del sistema | `file_controller` restringe rutas a `Path.home()`; lectura/escritura y operaciones con archivos son principalmente del usuario. | No controla archivos del sistema, por diseño. No ampliar a `C:\`/root: usar capacidades administrativas concretas, separadas y aprobadas. |
-| WhatsApp | Driver UIA en Windows, pero la propia hoja de ruta deja bloqueado el envio real porque no pudo verificar la conversacion correcta. | No habilitar envio como fiable hasta completar una validacion real y repetible. |
-| Reproductor multimedia | Acciones basicas y apertura/busqueda de YouTube; la hoja de ruta dice que no hay verificacion uniforme de reproduccion. | Parcial. No hay integracion universal con cualquier reproductor ni evidencia de audio/video efectivamente reproducido. |
-| Outlook | No hay conector Outlook/Graph ni prueba real registrada. | No implementado. Abrir la aplicacion no es integrarla. |
-| Agenda/Calendar | No hay conector Calendar real. `calendar_control` aparece en clasificación, no prueba que exista un plugin funcional. | No implementado; faltan OAuth, eventos, zonas horarias, recurrencias, conflictos y verificacion. |
-| Noticias internacionales/nacionales/regionales | `web_search` usa Gemini/DDG; el lugar se guarda como preferencia y la busqueda reciente filtra por fechas interpretables. | Parcial. El roadmap reconoce resultados locales mezclados, relevancia geografica no demostrada y fechas dependientes de fuentes. No se observa un asistente inicial obligatorio; el valor por defecto es Peru. |
-| Administrador de tareas | Lectura limitada de procesos ordenados por RAM y cierre de app con nombre. | No equivale al Administrador de tareas: sin control completo de servicios, procesos, prioridad, recursos o permisos. |
-| Administrador de equipos / Device Manager | No hay conector especifico encontrado. | No implementado. |
-| Configuracion / Panel de control | Algunas acciones concretas y `open_app`; no hay API semantica de todo Settings/Control Panel. | Parcial y dependiente de Windows/UIA; el nombre del atajo no garantiza cambio ni verificacion. |
-| WinRAR | No hay plugin/conector especifico. El lector de documentos/archivos no es WinRAR. | No implementado. |
-| Steam | `game_updater` lee manifiestos de Steam e instala/actualiza ciertos titulos con automatizacion parcial. | Integracion parcial, no control completo de biblioteca, tienda, chat, configuracion o compras. Incluye clics heurísticos que deben eliminarse. |
-| Git | Alias de apertura/terminal no equivale a una integracion Git. | No se encontro flujo especifico de repositorios, ramas, diff, conflictos, commits o verificacion. |
-| Visual Studio / VS Code | `code_helper` y `dev_agent` generan/editan archivos/proyectos; hay soporte de abrir aplicaciones. No se encontro extension IDE/LSP integrada como contrato principal. | Asistente de codigo parcial; no asumir que controla Visual Studio IDE ni que opera dentro de VS Code como un desarrollador con estado verificado. |
+| Voz / Gemini | Integración implementada; existe pipeline y control de dispositivos | Latencia, calidad o disponibilidad uniformes en todos los equipos/redes. |
+| Acciones Windows | Teclado/ratón, ventanas y UIA con validación/selectores y límites | Control completo de Windows, acceso administrador universal o compatibilidad de cada app. |
+| Planes compuestos | Preview/aprobación, hasta 12 pasos, ejecución secuencial, verificaciones y pausa/cancelación | Efecto por paso correctamente explicado todavía; recuperación persistente tras reinicio. |
+| Archivos/documentos | Acciones de archivo y lectura de formatos con límites; historial de correcciones de escritura/undo | Gestión de todo el disco o garantía de recuperación en todo sistema de archivos. |
+| Navegador/búsqueda | Playwright con perfil de automatización y búsqueda web/noticias | Compatibilidad universal, persistencia segura o precisión geográfica garantizada. |
+| Spotify | Plugin con ruta API/UIA; prueba real registrada de reproducción visible | Confirmar audio audible o compatibilidad con otras versiones/cuentas/idiomas. |
+| Gmail | Plugin de búsqueda de solo lectura y tests simulados | OAuth/cuenta real validada en este corte; envío o modificación de correo. |
+| WhatsApp | Driver con intento de validar destinatario, conversación y mensaje; otros envíos genéricos deshabilitados | Entrega verificada: historial reporta resultados `failed`/`unverified`; no reintentar un caso ambiguo. |
+| Calendario / Outlook | Sin integración completa confirmada | Clasificación de riesgo o abrir una aplicación no equivalen a conectores. |
+| Steam | Descubre juegos y puede abrir diálogo de instalación para que la persona revise | Instalación automática, compra o control total de tienda/biblioteca. |
+| YouTube/video | Busca/abre URL; el propio resultado puede ser `unverified` | Reproducción iniciada o audible sin leer el estado del reproductor. |
+| Git/IDE, WinRAR, Device Manager | No hay un conector completo demostrado en este corte | Abrir ejecutables o usar automatización genérica no cuenta como integrar el producto. |
+| Dashboard remoto | Servidor, pairing y TLS; existe prueba local TLS previa | Identidad de certificado y confianza de cada cliente LAN, ni uso remoto seguro sin validarlo. |
+| Plugins | Descubrimiento, hash y confianza explícita antes de cargar, además de habilitación | Sandbox: el plugin confiado corre en proceso y con permisos del usuario. |
 
-Las APIs oficiales no son intercambiables ni garantizan todas las acciones. Cada proveedor define OAuth, scopes, permisos, cuotas, tipo de cuenta y politicas. Automatizar la interfaz es un fallback fragil, no un sustituto equivalente.
+## 5. Seguridad, confiabilidad y privacidad
 
-## Rendimiento
+### Controles existentes que conviene conservar
 
-Hay esfuerzos utiles: importaciones diferidas, presupuestos de herramientas, cache de algunos datos, limites de navegador y tiempos por turno en `providers/engine_pipeline.py`. Por tanto, no es correcto decir que no hay instrumentacion. Pero la telemetria actual imprime etapas/tiempos y no ofrece un conjunto persistente de P50/P95 por recorrido completo, equipo, proveedor, accion y resultado. No hay base para declarar que una optimizacion determinada resolvera “se demora mucho”.
+- `core/tool_audit.py` asigna riesgos/efectos explícitos; el dispatcher
+  `core/action_policy.py` valida argumentos, rechaza efecto desconocido o riesgo
+  sin clasificar y confirma operaciones de alto impacto.
+- La confirmación nace de la interfaz; el contexto de plan permite solo las
+  firmas de herramienta/argumentos previamente aprobadas.
+- `core/outcome.py` distingue estados; un resultado incierto no se debe narrar
+  como éxito.
+- `core/task_plan.py` ejecuta en secuencia, limita la cantidad de pasos,
+  requiere verificación de solo lectura y no debe repetir automáticamente un
+  efecto ambiguo.
+- La auditoría de herramientas es acotada y no guarda argumentos ni texto de
+  resultados.
+- Los documentos existentes describen almacenamiento de secretos en keyring
+  con backend de Windows; la prueba con backend simulado no equivale a certificar
+  Windows Vault en otra máquina.
+- El código actual de Steam abre el diálogo oficial de instalación y deja la
+  elección/confirmación final a la persona.
+- La carga de plugins compara hash y requiere confianza/habilitación; es una
+  barrera de consentimiento, no aislamiento.
 
-La ruta local descrita en el codigo encadena STT → LLM → herramienta → segunda ronda de LLM → TTS; se estima en comentarios aproximadamente 1.5–4 s para turnos normales y dos rondas de modelo cuando se invoca una herramienta. Son estimaciones documentadas, no mediciones de este equipo. Hay esperas fijas en automatizacion de escritorio y el dashboard consulta metricas CPU con intervalo de 0.2 s. Ejecutar acciones UI en paralelo seria una mala optimizacion: comparte foco y produce carreras.
+### P0 — Captura visual solicitada por el modelo fuera de una puerta clara
 
-**Plan de medicion:** registrar monotonicamente fin de voz, STT, primer token/respuesta, llamadas por herramienta, duracion/red, verificacion y primer audio. Reportar P50/P95 por capacidad y motor, con opt-in y sin guardar texto, rutas ni capturas. Luego quitar esperas fijas reemplazandolas por condiciones observables con timeout y cancelacion. Comparar misma tarea/equipo antes y despues.
+`screen_process` está declarado como herramienta del modelo y clasificado como
+`read_or_navigate`. En `main.py`, su rama captura pantalla o cámara y adjunta la
+imagen al intercambio sin pasar por el mismo gate central de `dispatch`; hay
+un cooldown de cuatro segundos, pero eso no representa consentimiento ni
+indica al usuario que la pantalla se va a transmitir. Para cámara se activa el
+stream UI; para la ruta de pantalla no se observó un indicador equivalente.
 
-## Desajustes con la hoja de ruta
+**Riesgo:** contenido privado puede llegar al proveedor como parte de una
+llamada de herramienta que el modelo pidió, sin aprobación visible específica
+ni una política de tarea/retención completa.
 
-1. **Fase 1:** no considerar cerrados los hitos de clasificacion/proteccion mientras teclas, combinaciones y coordenadas caigan en `state_change` sin confirmacion. La prueba actual `test_tool_audit.py` pasa 12 casos, pero no contiene estos ejemplos.
-2. **Fases 2–4:** sus porcentajes solo representan pruebas locales o fixtures sinteticos; no autorizan compatibilidad con aplicaciones reales. Dry-run no es instalacion limpia completa; fixtures UIA no son Outlook, WhatsApp, Steam ni Office.
-3. **Fase 5:** correcto mantenerla parcial. Outlook, Calendar, WinRAR, Device Manager y Git no tienen integracion completa. WhatsApp sigue con una limitacion real documentada; Spotify es el piloto con evidencia real mas concreta.
-4. **Fases 6–7:** idempotencia tras reinicio, compatibilidad por version/idioma/escala, privacidad unificada y resistencia a prompt injection permanecen parciales. No elevar el estado por agregar pruebas sinteticas solamente.
-5. **Resultado:** cambiar la salida del roadmap para que cada hito cite evidencia reproducible (comando, test, version de app/SO y fecha); no declarar una fase cerrada cuando una prueba adversarial critica la contradice.
+**Estado:** pendiente de corregir. Mientras tanto, deshabilitar captura
+autónoma/proactiva o exigir un consentimiento explícito del usuario antes de
+capturar. La captura que el usuario pide directamente y la que solicita el
+modelo deben tratarse de forma distinguible.
 
-## Poda recomendada: orden de trabajo
+### P0 — Grant de pantalla con objetivo demasiado amplio y duración mal descrita
 
-### Puerta 0 — congelar alcance y corregir afirmaciones
+`core/session_grants.py` admite un único scope:
+`(share_screen_search, Gemini, active_screen)`. `_session_grant_for` autoriza
+`computer_control/screen_find` con ese scope sin comparar los argumentos,
+ventana, tarea o destino de la captura. El permiso permite una búsqueda sobre
+la pantalla activa en posteriores llamadas mientras siga válido.
 
-- No añadir conectores ni permisos de administrador mientras existan los P0/P1 de este informe.
-- Corregir `SECURITY-REVIEW.md`: retirar texto pegado ajeno al registro, preservar el analisis previo en otro archivo solo si es historicamente necesario y fechar/versionar hallazgos.
-- Definir como producto: “asistente de tareas con adaptadores verificables”, no “omnipotente/control absoluto”. La accion no soportada debe detenerse con una explicacion.
+El código fija `SESSION_GRANT_TTL_SECONDS` a **una hora**. Sin embargo, la UI
+describe el permiso como vigente “hasta que se revoque o cierre MARK” y “no
+expira por sí solo”. La tarjeta puede mostrar un contador, pero el texto
+principal y el comportamiento no coinciden. El grant tampoco lleva ID de tarea
+o sesión Gemini, no hay auditoría específica de creación/uso/revocación y no se
+ha demostrado un indicador de captura.
 
-### Puerta 1 — seguridad de efectos
+**Riesgo:** la persona puede otorgar una duración y alcance distintos de los
+que realmente presenta el producto; una sesión activa puede seguir permitiendo
+capturas que no corresponden a la tarea original.
 
-- Corregir politica de riesgo y escribir pruebas para Delete, hotkeys, coordenadas, compras/alquileres, destinos ambiguos y herramientas desconocidas.
-- Corregir copia, reemplazo, escritura binaria/ilegible y atomicidad; demostrar restauracion del estado previo.
-- Deshabilitar mensajeria generica ciega y eliminar clics heurísticos de Steam.
-- Deshabilitar mutaciones automaticas de firewall/perfil; quitar el parche global de `Popen`.
+**Decisión de producto acordada durante esta sesión:** recordar permisos
+específicos entre reinicios por 30 días, con expiración fija (no deslizante),
+revocación visible y alcance de capacidad/proveedor/objetivo. Las acciones de
+alto impacto siempre conservan confirmación por operación. La captura no se
+habilita en segundo plano y requiere indicador y contexto de tarea. No se
+sincronizan grants entre equipos/perfiles.
 
-### Puerta 2 — base reproducible
+**Estado técnico:** pendiente P0; el código sigue siendo solo en memoria y
+expira a la hora. No afirmar que MARK ya recuerda permisos al reiniciar. La
+implementación debe incluir almacenamiento local versionado/atómico, invalidar
+registros malformados y separar autorización persistente de tokens de aprobación
+de plan. No migrar automáticamente el scope antiguo `active_screen` a un
+permiso más amplio.
 
-- Mantener Python 3.11–3.13 como rango declarado y crear CI que pruebe sus versiones soportadas; decidir con evidencia si una version posterior entra en la matriz.
-- Crear instalacion base minima, extras reales por capacidad y lock/resolucion reproducible. Ejecutar CI sin secretos ni cuentas; las integraciones reales quedan en una matriz manual opt-in.
-- Mantener tests puros sin Playwright/audio/UIA; separar los tests de hardware/desktop como suites opt-in con reporte de skip explicito.
+### P1 — Planes no muestran efecto real por paso
 
-### Puerta 3 — integraciones por valor
+`PlanStep.effect` se construye actualmente llamando a
+`classify_effect("started" if action else "unknown")`; no clasifica los
+argumentos y la vista `preview()` devuelve el total de riesgos, pero no un
+efecto legible por paso. La aprobación es exacta respecto a firmas y se valida
+el riesgo, lo cual es valioso, pero no satisface la promesa de que la persona
+vea lo que hará cada paso.
 
-- Priorizar una por una: Spotify (terminar matriz), Calendar oficial, Outlook via Microsoft Graph si es el objetivo, WhatsApp solo por una ruta autorizada y soportada, luego navegador y herramientas de desarrollo.
-- Para cada conector: scopes minimos, revocacion, permisos, vista previa, confirmacion de efectos, clave de idempotencia cuando aplique, verificacion posterior y pruebas de expiracion/timeout/reintento. No compartir “compatibilidad” entre aplicaciones.
-- Definir por separado Git, Visual Studio/VS Code, WinRAR, Device Manager y multimedia; abrir un exe no cuenta como integrar el producto.
+**Acción:** calcular el efecto desde herramienta/acción/argumentos, rechazar
+`unknown`, y exponer en la confirmación una descripción legible del objetivo,
+los datos que se leerán/enviarán y los efectos por paso. Probar redacción de
+secretos y el rechazo de cambios entre preview y ejecución.
 
-### Puerta 4 — modularizar sin reescritura masiva
+### P1 — Mensajería y resultados reales
 
-- Extraer primero telemetria, flujo de sesion, dashboard, funciones de archivos y conectores de `ui.py`, `main.py`, `file_processor.py` y `computer_control.py` por contratos pequeños.
-- No hacer refactor estilistico amplio mientras no haya tests que detecten efectos erroneos. Cada extraccion conserva API y agrega una prueba focal.
+`actions/send_message.py` mantiene un stub que rechaza envíos genéricos sin
+transporte verificable. WhatsApp usa un driver específico, revalida el
+destinatario y puede devolver `unverified` si no comprueba el mensaje.
+Documentación anterior registra intentos reales ambiguos. No hay evidencia en
+este corte de una matriz repetible de envío a una cuenta de prueba.
 
-## Decision final
+**Regla operativa:** no reintentar automáticamente cuando pudo haberse enviado
+el mensaje; no afirmar entrega por el texto del modelo ni por el texto escrito
+en el compositor.
 
-**No reiniciar desde cero. Si podar antes de crecer.** Lo que se debe cortar ahora son las rutas de efectos opacos sin verificacion y la etiqueta de “universal” cuando solo existe una automatizacion generica. La base reutilizable es el contrato de resultado, planificador, adaptador UIA, almacenes de configuracion/credenciales y plugins confiables; sus limites necesitan pruebas y el cargador de plugins no debe confundirse con sandbox.
+### P1 — Plugins de Python ejecutan en el mismo proceso
 
-No declares MARK listo para uso desatendido con archivos sensibles, mensajes, instalaciones o cambios de red. Primero cierra los hallazgos P0/P1 y vuelve a ejecutar la suite en un entorno reproducible. El proyecto puede crecer bien, pero hoy la hoja de ruta expresa mas madurez que la evidencia real.
+`core/plugin_loader.py` limita tamaño del fuente, calcula SHA-256, evita cargar
+plugins sin confianza explícita y exige que estén habilitados. Una vez cargado,
+el código se ejecuta dentro del proceso de MARK con los permisos del usuario.
+No existe sandbox ni aislamiento de red/archivos.
+
+**Decisión:** documentar como código local de confianza. Antes de permitir
+plugins de terceros, explorar un proceso separado/IPC, capacidades acotadas,
+timeout, cancelación y límites. No llamar “seguro” o “aislado” al control por
+hash.
+
+### P1 — Dashboard: cifrado no equivale a identidad verificada
+
+`dashboard/server.py` expone funcionalidad de red y tiene una rutina pública
+de lectura de reglas de firewall; en el código inspeccionado esta función lee
+reglas y no las modifica. Los antecedentes registran HTTPS con certificado
+temporal/autofirmado y un test local confiado que responde HTTP 200. No se
+comprobó la confianza de identidad desde un cliente físico en esta revisión.
+TLS protege el canal únicamente cuando el cliente confía en el certificado
+correcto.
+
+**Estado:** cambios automáticos de firewall no se observaron en la ruta actual;
+no asumir que el acceso remoto está certificado. Mantener opt-in, comprobar
+emparejamiento, identidad del servidor, revocación, expiración y límite de
+intentos antes de exponerlo en una LAN no confiable.
+
+### P1 — Rutas inline y límites de la política única
+
+`main.py::_execute_tool` tiene herramientas inline. Algunas tienen confirmación
+explícita, otras son de lectura, pero `screen_process` demuestra que no toda
+operación sensible pasa estructuralmente por el dispatcher central. No declarar
+“toda herramienta está gateada” sin inventariar ruta por ruta.
+
+**Acción:** inventariar todas las herramientas inline, clasificar sus datos y
+efectos, y enrutar captura/escritura/efectos externos por política o gate
+equivalente que falle cerrado.
+
+### P1 — Afirmaciones de grant/confirmación y API de aprobación
+
+La decisión de grant se origina actualmente en botones del HUD; no hay una
+opción de “permitir todo”. Conviene mantenerlo. No obstante, la función
+`confirm.resolve` acepta booleanos y cadenas (`accept`, `grant`, `cancel`).
+La ruta observada es UI, por lo que esto se trata como endurecimiento
+preventivo: usar decisiones tipadas y mantener imposible que texto del modelo,
+red o una llamada futura cree aprobación.
+
+La concesión se crea antes de ejecutar el paso confirmado y no se revierte si
+el paso falla. Esto puede dejar un permiso concedido aunque la operación no
+haya completado; decidir si es intencional o crear grant tras éxito, con
+semántica explícita y pruebas.
+
+### Riesgos de archivos y undo
+
+La documentación previa registra correcciones para evitar reemplazar un
+destino al copiar y para condicionar undo a identidad/contenido; el árbol tiene
+pruebas de archivos en la suite. No se reprodujeron aquí las pruebas
+adicionales de NTFS ACL, SMB, medio extraíble o ENOSPC mencionadas en notas
+previas. Esas pruebas son evidencia acotada, no garantía para cualquier
+volumen.
+
+**Pendiente:** mantener una matriz de destino preexistente, permisos
+denegados, binarios, archivos grandes, interrupciones, red y carpetas; verificar
+que ningún undo borre cambios posteriores del usuario.
+
+### Prompt injection y contenido no confiable
+
+Existen wrappers para contenido web/documental y tests deterministas de límites.
+Eso ayuda a separar datos de instrucciones, pero no prueba que el modelo obedezca
+en todos los casos. Las acciones derivadas de correo, webs, documentos,
+subtítulos o plugins deben requerir evaluación independiente de efecto y
+confirmación humana cuando corresponda.
+
+### Datos y retención
+
+Hay varios subsistemas de memoria, historial, capturas y logs; no se identificó
+una política única que explique todo el ciclo de vida. La auditoría de
+herramientas omite argumentos, pero esto no demuestra que todos los logs de
+dependencias o plugins tengan el mismo comportamiento. Documentar cada fuente,
+ubicación, retención, exportación y borrado antes de afirmar “no se guarda”.
+
+## 6. Mantenimiento y distribución
+
+### Dependencias
+
+- `requirements-base.txt` incluye PyQt6, audio, Gemini, HTTP, navegador
+  Playwright, OpenCV, automatización de escritorio, dashboard y varias
+  bibliotecas. Hay manifiestos opcionales separados, pero conviene confirmar
+  que las dependencias base sean necesarias para el camino de voz mínimo.
+- `setup.py` declara Python 3.11–3.13 como rango probado en el código.
+- Algunos paquetes no tienen límites de versión estrictos; no se identificó un
+  lockfile reproducible en la raíz.
+- La suite reportó un aviso por `Starlette TestClient`/`httpx`; también apareció
+  aviso deprecado de `pynvml`. No bloquearon los tests, pero conviene elegir
+  dependencias recomendadas y evitar que el aviso se convierta en incompatibilidad.
+
+### Rendimiento
+
+El pipeline y varias herramientas ya tienen tiempos, presupuestos, cachés o
+timeouts; por tanto, no es correcto describir el proyecto como carente de toda
+instrumentación. Lo que no se encontró como evidencia de release es una serie
+persistente y privada de P50/P95 por recorrido completo, proveedor, tipo de
+tarea y resultado verificado. La recomendación es medir primero, sin texto ni
+capturas, y optimizar después; paralelizar acciones que comparten foco puede
+causar errores aunque reduzca latencia.
+
+### Calidad
+
+La CI Windows existe, pero la evidencia histórica no coincide con la línea
+base del árbol modificado. No vi evidencia de que Ruff/Pyright sean un paso
+requerido de la matriz. Primero fijar qué linter y comprobación de tipos son
+apropiados y activar reglas gradualmente; evitar un cambio masivo que distraiga
+de las brechas P0.
+
+### Identidad del producto y UI
+
+La documentación histórica menciona variaciones MARK/JARVIS. El código que se
+revisó aún contiene nombres heredados (“Jarvis” en UI y mensajes). Definir el
+nombre canónico y reservar aliases solo para compatibilidad. El módulo
+holográfico separado no está en el checkout actual; el import opcional permite
+fallback, por lo que no bloquea el arranque, pero sí cambia el aspecto esperado.
+
+### Instalador
+
+En `AAAA` había un instalador de otra aplicación, pero no se halló un instalador
+propio de MARK en la raíz. El script externo puede inspirar decisiones de
+Windows, no copiarse. Si MARK se distribuirá como aplicación instalada, definir
+firma, arquitectura, instalación por usuario, actualización y conservación/
+borrado explícitos de configuración.
+
+## 7. Duplicación y oportunidades de simplificación
+
+- Automatización de escritorio se reparte entre varios módulos; consolidar un
+  adaptador de bajo nivel por plataforma, dejando clasificación/consentimiento
+  fuera de los drivers.
+- `action_loader` y `plugin_loader` comparten descubrimiento/despacho, pero
+  tienen fronteras de confianza distintas; extraer tipos comunes solo después
+  de documentar esa diferencia.
+- `ui.py`/`main.py` son superficies grandes; dividir por capacidad con pruebas
+  y API estable, no por una reescritura cosmética.
+- Integraciones de mensajería deben permanecer por proveedor, no esconderse
+  bajo un sender genérico que no pueda verificar destinatario.
+- Reducir afirmaciones manuales de porcentaje y conteos: generar estado desde
+  CI/evidencia asociada a un commit o etiquetarlo como histórico.
+
+## 8. Decisiones para acordar con el compañero
+
+1. **Plataforma objetivo:** ¿Windows primero con el rango Python 3.11–3.13, o
+   soporte multiplataforma como objetivo activo? Hoy la evidencia fuerte es
+   Windows y fixtures UIA.
+2. **Modelo de captura:** ¿pantalla/cámara solo bajo petición explícita del
+   usuario, o también a petición del modelo dentro de tareas aprobadas? La
+   recomendación es empezar solo por petición del usuario.
+3. **Permisos reutilizables — decisión tomada:** recordarlos entre reinicios
+   durante 30 días, con alcance exacto, revocación visible y aprobación humana.
+   Las acciones de alto impacto siguen confirmándose por operación. No está
+   implementado todavía; el código actual solo conserva un grant en memoria por
+   una hora para `screen_find`.
+4. **Plugins externos:** ¿basta confianza explícita en proceso para plugins
+   escritos por el usuario, o se necesita sandbox antes de aceptar código de
+   terceros? No confundir los dos casos.
+5. **Integración prioritaria:** escoger una (Spotify, Gmail de solo lectura,
+   Outlook/Graph o Calendar oficial) según el uso real; no iniciar todas a la vez.
+6. **Producto distribuido:** confirmar si se planea instalador/actualizador
+   firmado o si MARK seguirá siendo un proyecto ejecutado desde Python.
+7. **Retención:** definir con precisión qué persiste entre memoria, historial,
+   logs, capturas y dashboard.
+
+## 9. Dictamen
+
+**Conservar y endurecer; no reescribir desde cero.** Los riesgos más urgentes
+son de consistencia entre el permiso presentado y el ejecutado, captura de
+datos visuales y transparencia del efecto de los planes. La base de validación
+de argumentos, política fail-closed, confirmación, undo, resultados tipados y
+pruebas es reutilizable. Las integraciones deben crecer con adapters
+específicos, permisos mínimos y evidencia real acotada.
+
+No declarar “todo P0/P1 cerrado” ni “control universal” mientras la captura
+visual y los grants no tengan contrato verificable, los planes no expliquen
+efectos por paso y la mensajería continúe sin resultado independiente. No
+habilitar uso sensible desatendido a partir de tests sintéticos.
+
+## 10. Redundancia documental y limpieza segura
+
+Este informe absorbe el análisis de Minimax y los hallazgos relevantes de
+`SECURITY-REVIEW.md`; la hoja de ruta anterior queda sustituida como plan de
+trabajo por [plan_seguimiento.md](./plan_seguimiento.md). Ya no hace falta
+mantener tres versiones del mismo estado, porcentajes y recomendaciones.
+
+Antes de borrar los documentos antiguos, comprobar que el compañero los recibió
+y que no necesitan conservarse como historia. **Precaución:** `SECURITY-REVIEW.md`
+ya tenía cambios locales sin commit al comenzar esta tarea. Aunque sus hallazgos
+revisados están consolidados aquí, borrarlo descartaría también esas notas
+locales exactas; Git no las recupera si nunca se guardaron en un commit. La
+hoja de ruta anterior sí estaba limpia al inicio. No he borrado ninguno de los
+dos documentos. Este informe no certifica que toda recomendación esté
+arreglada: los pendientes se enumeran en
+[plan_seguimiento.md](./plan_seguimiento.md).

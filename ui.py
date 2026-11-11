@@ -50,7 +50,8 @@ except Exception as _e:            # noqa: BLE001 - reported, never fatal
     print(f"[Video] playback unavailable ({_e}) — the HUD will not show video.")
 
 from PyQt6.QtWidgets import (
-    QApplication, QComboBox, QFileDialog, QFrame, QHBoxLayout, QLabel, QLineEdit,
+    QApplication, QComboBox, QFileDialog, QFrame, QGridLayout, QHBoxLayout,
+    QLabel, QLineEdit,
     QListWidget, QListWidgetItem, QMainWindow, QMessageBox, QPushButton,
     QScrollArea, QSizePolicy, QSplitter,
     QGraphicsScene, QGraphicsView,
@@ -61,6 +62,29 @@ try:
     from core.avatar import HoloAvatar
 except Exception:      # pragma: no cover — HUD must never die over cosmetics
     HoloAvatar = None
+
+# The holographic chrome (instrument frame, arc gauges, capability matrix)
+# lives in its own module so ui.py does not grow past what one file should
+# hold. A missing or broken ui_holo must never take the assistant down with
+# it — the HUD falls back to plain panels and everything still works.
+try:
+    from ui_holo import (
+        CapabilityInspector,
+        HoloBootOverlay,
+        HoloFrame,
+        HoloGauge,
+        HoloSubsystemPanel,
+        ReactorCore,
+        tech_font,
+    )
+    HAVE_HOLO = True
+except Exception as _holo_error:      # noqa: BLE001 - reported, never fatal
+    CapabilityInspector = HoloBootOverlay = None
+    HoloFrame = HoloGauge = HoloSubsystemPanel = ReactorCore = None
+    tech_font = None
+    HAVE_HOLO = False
+    print(f"[HUD] Holographic chrome unavailable ({_holo_error}) — "
+          f"the interface will use the plain panels.")
 
 
 def _base_dir() -> Path:
@@ -86,9 +110,12 @@ def _read_full_config() -> dict:
 APP_VERSION  = "MARK LVI"
 APP_PROTOCOL = APP_VERSION.split()[-1]
 
-_DEFAULT_W, _DEFAULT_H = 980, 700
-_MIN_W,     _MIN_H     = 820, 580
-_LEFT_W  = 148
+_DEFAULT_W, _DEFAULT_H = 1120, 720
+_MIN_W,     _MIN_H     = 900, 600
+# The left column carries the instrument cluster (four arc gauges) and the
+# capability matrix. It needed to be wider than the old 148px to hold a
+# 2x2 gauge grid without shrinking the dials into unreadable rings.
+_LEFT_W  = 178
 _RIGHT_W = 340
 
 _OS = platform.system()  # "Windows" | "Darwin" | "Linux"
@@ -2103,10 +2130,15 @@ class ConfirmBanner(_HudOverlay):
         no.setFocus()
 
         if grant_label:
-            grant_note = QLabel(
-                f"Optional session permission (expires in 1 hour): {grant_label}. "
-                "You can revoke it in Session Permissions."
-            )
+            # The permission the human is being offered, stated in full.
+            #
+            # "Expires in 1 hour" was wrong twice over: it described a
+            # timeout the model does not have, and it hid the three things
+            # that actually decide whether a permission is safe — what
+            # capability it covers, which platform it reaches, and which
+            # concrete target it names. Those are shown as separate lines so
+            # they cannot be skimmed past as one line of prose.
+            grant_note = QLabel(self._grant_scope_text(grant_label))
             grant_note.setWordWrap(True)
             grant_note.setTextFormat(Qt.TextFormat.PlainText)
             grant_note.setFont(QFont("Courier New", 8))
@@ -2127,11 +2159,56 @@ class ConfirmBanner(_HudOverlay):
             grant.clicked.connect(lambda: self.answered.emit("grant"))
             lay.addWidget(grant)
 
+    @staticmethod
+    def _grant_scope_text(grant_label) -> str:
+        """Render a permission offer as the four things it must disclose.
+
+        The offer arrives either as a structured descriptor (capability,
+        platform, target, expiry) or as a plain string from an older caller.
+        Both are rendered the same way: one line per disclosed field, and a
+        lifetime that says what actually happens — this session, until it is
+        revoked — rather than a timeout that does not exist.
+        """
+        lines = ["PERMISSION FOR THIS SESSION — allow during this session:"]
+
+        if isinstance(grant_label, dict):
+            capability = str(grant_label.get("capability", "") or "")
+            integration = str(grant_label.get("integration", "") or "")
+            resource = str(grant_label.get("resource", "") or "")
+            expiry = str(grant_label.get("expiry", "") or "")
+            summary = str(grant_label.get("summary", "") or "")
+            if capability:
+                lines.append(f"  Capability : {capability}")
+            if integration:
+                lines.append(f"  Platform   : {integration}")
+            if resource:
+                lines.append(f"  Target     : {resource}")
+            if expiry:
+                lines.append(f"  Expires    : {expiry}")
+            if summary:
+                lines.append(f"  {summary}")
+        else:
+            lines.append(f"  {grant_label}")
+
+        lines.append(
+            "  Stays until you revoke it or MARK closes. It does not expire "
+            "on its own."
+        )
+        lines.append("  Revoke it any time under SESSION PERMISSIONS.")
+        return "\n".join(lines)
+
 
 class SessionGrantsOverlay(_HudOverlay):
-    """Inspect and revoke the narrowly scoped permissions for this process."""
+    """Inspect and revoke the scoped permissions held for this session.
 
-    _OW = 430
+    The panel is the other half of the permission model: the grant offered at
+    the confirmation banner is the half the user grants, and this is the half
+    they take back. It shows each permission as the four things that define
+    it — capability, platform, target, lifetime — so a user can see exactly
+    what is still open rather than trusting that nothing is.
+    """
+
+    _OW = 470
 
     def __init__(self, parent=None):
         super().__init__(parent)
@@ -2149,7 +2226,6 @@ class SessionGrantsOverlay(_HudOverlay):
             f"QListWidget {{ background: #000d12; color: {C.TEXT}; "
             f"border: 1px solid {C.BORDER}; }}"
         )
-        self._refresh_items()
 
         layout = QVBoxLayout(self)
         layout.setContentsMargins(18, 14, 18, 14)
@@ -2158,10 +2234,22 @@ class SessionGrantsOverlay(_HudOverlay):
         title.setFont(QFont("Courier New", 10, QFont.Weight.Bold))
         title.setStyleSheet(f"color: {C.ACC}; background: transparent;")
         layout.addWidget(title)
-        layout.addWidget(self._items)
+
+        hint = QLabel(
+            "Permissions you granted for this session. They stay open until "
+            "you revoke them or MARK closes — they do not expire on their own."
+        )
+        hint.setWordWrap(True)
+        hint.setFont(QFont("Courier New", 7))
+        hint.setStyleSheet(f"color: {C.TEXT_DIM}; background: transparent;")
+        layout.addWidget(hint)
+
+        self._items.setMinimumHeight(120)
+        layout.addWidget(self._items, stretch=1)
 
         buttons = QHBoxLayout()
         revoke_button = QPushButton("REVOKE SELECTED")
+        revoke_all_button = QPushButton("REVOKE ALL")
         close_button = QPushButton("CLOSE")
         button_style = f"""
             QPushButton {{
@@ -2171,36 +2259,85 @@ class SessionGrantsOverlay(_HudOverlay):
             }}
             QPushButton:hover {{ color: {C.PRI}; border-color: {C.BORDER_B}; }}
         """
-        for button in (revoke_button, close_button):
+        for button in (revoke_button, revoke_all_button, close_button):
             button.setFixedHeight(30)
             button.setFont(QFont("Courier New", 8, QFont.Weight.Bold))
             button.setCursor(Qt.CursorShape.PointingHandCursor)
             button.setStyleSheet(button_style)
+        # Revoking everything is the button a user reaches for when they no
+        # longer trust what is open. Leaving it out would make them pick
+        # through a list one permission at a time.
+        revoke_all_button.setStyleSheet(f"""
+            QPushButton {{
+                background: transparent; color: {C.RED};
+                border: 1px solid {C.RED}; border-radius: 3px;
+                text-align: left; padding: 0 8px;
+            }}
+            QPushButton:hover {{ background: rgba(255,51,85,35); }}
+        """)
         revoke_button.clicked.connect(self._revoke_selected)
+        revoke_all_button.clicked.connect(self._revoke_all)
         close_button.clicked.connect(self.hide)
         buttons.addWidget(revoke_button)
+        buttons.addWidget(revoke_all_button)
         buttons.addWidget(close_button)
         layout.addLayout(buttons)
-        self.setMinimumHeight(190)
-        self.adjustSize()
+        self.setMinimumHeight(260)
+        self._refresh_items()
+
+    def showEvent(self, event):
+        # The list is re-read on every open: a permission granted after the
+        # panel was built must be visible when the user comes back to it.
+        self._refresh_items()
+        super().showEvent(event)
+
+    @staticmethod
+    def _lifetime(grant) -> str:
+        """How long this permission lasts, stated as what actually happens."""
+        expires_at = getattr(grant, "expires_at", None)
+        if expires_at:
+            remaining = getattr(grant, "expires_in_seconds", None)
+            if isinstance(remaining, (int, float)):
+                return f"expires in {max(0, int(remaining)) // 60} min"
+            return "expires at a set time"
+        remaining = getattr(grant, "expires_in_seconds", None)
+        if isinstance(remaining, (int, float)) and remaining > 0:
+            # A grant with a countdown still exists, but the model says a
+            # session permission does not expire on its own — so say what is
+            # true rather than what the number implies.
+            return f"expires in {max(0, int(remaining)) // 60} min"
+        return "until MARK closes"
 
     def _refresh_items(self) -> None:
         from core import session_grants
 
         self._items.clear()
-        grants = session_grants.active()
+        try:
+            grants = session_grants.active()
+        except Exception:
+            grants = ()
         if not grants:
             self._items.addItem("No active session permissions.")
             self._items.item(0).setFlags(Qt.ItemFlag.NoItemFlags)
             return
         for grant in grants:
-            item = QListWidgetItem(
-                f"{grant.label}\n"
-                f"{grant.scope.capability} / {grant.scope.integration} / "
-                f"{grant.scope.resource} — "
-                f"{grant.expires_in_seconds // 60} min remaining"
-            )
-            item.setData(Qt.ItemDataRole.UserRole, grant.scope)
+            scope = getattr(grant, "scope", None)
+            capability = getattr(scope, "capability", "?")
+            integration = getattr(scope, "integration", "?")
+            resource = getattr(scope, "resource", "?")
+            uses = getattr(grant, "uses", None)
+            if uses is None:
+                uses = getattr(grant, "use_count", 0)
+            label = str(getattr(grant, "label", "") or "")
+            lines = [f"{capability}  /  {integration}  /  {resource}"]
+            detail = f"   {self._lifetime(grant)}"
+            if isinstance(uses, int) and uses:
+                detail += f"  ·  used {uses}×"
+            if label:
+                detail += f"  ·  {label}"
+            lines.append(detail)
+            item = QListWidgetItem("\n".join(lines))
+            item.setData(Qt.ItemDataRole.UserRole, scope)
             self._items.addItem(item)
 
     def _revoke_selected(self) -> None:
@@ -2210,6 +2347,15 @@ class SessionGrantsOverlay(_HudOverlay):
         scope = item.data(Qt.ItemDataRole.UserRole) if item else None
         if scope is not None:
             session_grants.revoke(scope)
+        self._refresh_items()
+
+    def _revoke_all(self) -> None:
+        from core import session_grants
+
+        try:
+            session_grants.revoke_all()
+        except Exception:
+            pass
         self._refresh_items()
 
 
@@ -4685,6 +4831,14 @@ class MainWindow(QMainWindow):
         # Center column: HUD + resizable content panel via QSplitter
         self.hud = HudCanvas(face_path, _display)
         self.hud.setSizePolicy(QSizePolicy.Policy.Expanding, QSizePolicy.Policy.Expanding)
+        # The instrument frame: corner brackets, edge rails and a scan sweep
+        # drawn OVER the avatar. It is a child of the canvas, transparent to
+        # mouse events, so every click still reaches the head underneath.
+        self._holo_frame = None
+        if HAVE_HOLO:
+            self._holo_frame = HoloFrame(self.hud)
+            self._holo_frame.setGeometry(self.hud.rect())
+            self.hud.installEventFilter(self)
         self._content_panel = self._build_content_panel()
         self._quiz_panel = self._build_quiz_panel()
 
@@ -4889,6 +5043,18 @@ class MainWindow(QMainWindow):
         self._metric_tmr.timeout.connect(self._update_metrics)
         self._metric_tmr.start(2000)
         self._update_metrics()
+
+        # The holographic overlays that live over the HUD.
+        self._capability_overlay = None
+        self._capability_entries: list[dict] = []
+        self._boot_overlay = None
+
+        # The capability matrix and the boot sequence need the live registry,
+        # which is only assembled once the application has finished starting.
+        # A short delay gets them past the window's first layout without
+        # making startup depend on the probe succeeding.
+        QTimer.singleShot(900, self._start_boot_sequence)
+        QTimer.singleShot(2600, self._refresh_capability_matrix)
 
         self._log_sig.connect(self._log.append_log)
         self._state_sig.connect(self._apply_state)
@@ -5613,6 +5779,18 @@ class MainWindow(QMainWindow):
 
         lay.addWidget(_badge(APP_VERSION, C.PRI_DIM))
         lay.addSpacing(8)
+
+        # The reactor sits at the left edge as the machine's power indicator.
+        # It is not decoration: its ring is lit in proportion to how many
+        # capability subsystems are online, and its core carries the
+        # assistant's live state colour. Looking at the corner tells you
+        # whether JARVIS is running, and how much of the machine it can reach.
+        self._reactor = None
+        if HAVE_HOLO:
+            self._reactor = ReactorCore(size=30)
+            lay.addWidget(self._reactor)
+            lay.addSpacing(8)
+
         self._drawer_btn = QPushButton("⚙")
         self._drawer_btn.setFixedSize(26, 26)
         self._drawer_btn.setFont(QFont("Courier New", 11))
@@ -5647,6 +5825,18 @@ class MainWindow(QMainWindow):
         self._ctrl_btn.clicked.connect(self._toggle_controls)
         lay.addSpacing(4)
         lay.addWidget(self._ctrl_btn)
+        lay.addSpacing(4)
+
+        # The capability matrix: what this build can actually do, right now.
+        # A user who can see the boundary cannot be surprised by it.
+        self._caps_btn = QPushButton("◈")
+        self._caps_btn.setFixedSize(26, 26)
+        self._caps_btn.setFont(QFont("Courier New", 11))
+        self._caps_btn.setCursor(Qt.CursorShape.PointingHandCursor)
+        self._caps_btn.setToolTip("Capability matrix — what I can do right now")
+        self._caps_btn.setStyleSheet(self._drawer_btn.styleSheet())
+        self._caps_btn.clicked.connect(self._open_capability_matrix)
+        lay.addWidget(self._caps_btn)
         lay.addStretch()
 
         mid = QVBoxLayout(); mid.setSpacing(1)
@@ -5706,9 +5896,35 @@ class MainWindow(QMainWindow):
         self._bar_gpu = MetricBar("GPU", C.ACC)
         self._bar_tmp = MetricBar("TMP", "#ff6688")
 
-        for bar in [self._bar_cpu, self._bar_mem, self._bar_net,
-                    self._bar_gpu, self._bar_tmp]:
-            lay.addWidget(bar)
+        self._subsystems = None
+        self._subsystem_widget = None
+
+        if HAVE_HOLO:
+            # Arc gauges instead of bars. A dial reads as an instrument; a
+            # progress bar reads as a progress bar. The needle, the arc and
+            # the number are all drawn from one value, so they cannot
+            # disagree with each other the way separate widgets can.
+            self._bar_cpu = HoloGauge("CPU", C.PRI, size=80)
+            self._bar_mem = HoloGauge("MEM", C.ACC2, size=80)
+            self._bar_gpu = HoloGauge("GPU", C.ACC, size=80)
+            self._bar_tmp = HoloGauge("TMP", "#ff6688", size=80)
+
+            grid = QGridLayout()
+            grid.setSpacing(2)
+            for index, gauge in enumerate(
+                (self._bar_cpu, self._bar_mem, self._bar_gpu, self._bar_tmp)
+            ):
+                grid.addWidget(gauge, index // 2, index % 2)
+            lay.addLayout(grid)
+
+            # Network stays a bar on purpose: it is a rate, not a bounded
+            # percentage, and a dial has no honest way to show "off scale".
+            self._bar_net = MetricBar("NET", C.GREEN)
+            lay.addWidget(self._bar_net)
+        else:
+            for bar in [self._bar_cpu, self._bar_mem, self._bar_net,
+                        self._bar_gpu, self._bar_tmp]:
+                lay.addWidget(bar)
 
         lay.addSpacing(4)
 
@@ -5741,19 +5957,47 @@ class MainWindow(QMainWindow):
 
         lay.addStretch()
 
-        for txt, col in [
-            ("AI CORE\nACTIVE",  C.GREEN),
-            ("SEC\nCLEARED",     C.PRI),
-            ("PROTOCOL\n" + APP_PROTOCOL,   C.TEXT_DIM),
-        ]:
-            lbl = QLabel(txt)
+        if HAVE_HOLO:
+            # The capability matrix: one row per subsystem, LED lit by its
+            # REAL availability. This is the visible half of "JARVIS knows
+            # what it does" — a subsystem that is declared but not working
+            # shows as offline rather than quietly pretending.
+            matrix_hdr = QLabel("◈ CAPABILITY MATRIX")
+            matrix_hdr.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+            matrix_hdr.setStyleSheet(
+                f"color: {C.PRI}; background: transparent; "
+                f"border-bottom: 1px solid {C.BORDER}; padding-bottom: 3px;"
+            )
+            lay.addWidget(matrix_hdr)
+
+            self._subsystem_widget = HoloSubsystemPanel()
+            self._subsystem_widget.subsystem_activated.connect(
+                self._open_capability_matrix
+            )
+            lay.addWidget(self._subsystem_widget, stretch=1)
+
+            lbl = QLabel("PROTOCOL\n" + APP_PROTOCOL)
             lbl.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
             lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
             lbl.setStyleSheet(
-                f"color: {col}; background: {C.PANEL2};"
-                f"border: 1px solid {C.BORDER_A}; border-radius: 3px; padding: 4px;"
+                f"color: {C.TEXT_DIM}; background: {C.PANEL2};"
+                f"border: 1px solid {C.BORDER_A}; border-radius: 3px; padding: 3px;"
             )
             lay.addWidget(lbl)
+        else:
+            for txt, col in [
+                ("AI CORE\nACTIVE",  C.GREEN),
+                ("SEC\nCLEARED",     C.PRI),
+                ("PROTOCOL\n" + APP_PROTOCOL,   C.TEXT_DIM),
+            ]:
+                lbl = QLabel(txt)
+                lbl.setFont(QFont("Courier New", 7, QFont.Weight.Bold))
+                lbl.setAlignment(Qt.AlignmentFlag.AlignCenter)
+                lbl.setStyleSheet(
+                    f"color: {col}; background: {C.PANEL2};"
+                    f"border: 1px solid {C.BORDER_A}; border-radius: 3px; padding: 4px;"
+                )
+                lay.addWidget(lbl)
 
         return w
     def _build_right_panel(self) -> QWidget:
@@ -7226,6 +7470,118 @@ class MainWindow(QMainWindow):
         self._centre_overlay(overlay)
         self._session_grants_overlay = overlay
 
+    # ── Capability matrix ────────────────────────────────────────────────────
+    #
+    # The assistant's self-knowledge, made visible. The model already knows
+    # what it can do (the system prompt is derived from the live tool
+    # registry); this is the same truth shown to the PERSON, so the user can
+    # see the boundary instead of guessing at it — and can see which of those
+    # abilities need their approval.
+
+    @staticmethod
+    def _as_dict(item) -> dict:
+        """Normalise a registry row that may be a dict or a dataclass."""
+        if isinstance(item, dict):
+            return dict(item)
+        try:
+            return dict(vars(item))
+        except TypeError:
+            return {}
+
+    def _capability_rows(self) -> tuple[list[dict], list[dict]]:
+        """(subsystem rows, capability entries) from the live registry.
+
+        Every access is defensive: the registry is a convenience for the
+        interface, and an interface that cannot draw itself is still a
+        working interface.
+        """
+        try:
+            from core import capabilities as caps
+        except Exception:
+            return [], []
+        subsystems: list[dict] = []
+        entries: list[dict] = []
+        try:
+            subsystems = [self._as_dict(item) for item in (caps.subsystems() or ())]
+        except Exception:
+            subsystems = []
+        try:
+            entries = [self._as_dict(item) for item in (caps.registry() or ())]
+        except Exception:
+            entries = []
+        return subsystems, entries
+
+    def _refresh_capability_matrix(self) -> None:
+        subsystems, entries = self._capability_rows()
+        self._capability_entries = entries
+
+        widget = getattr(self, "_subsystem_widget", None)
+        if widget is not None:
+            rows = []
+            for row in subsystems:
+                state = str(row.get("state", "offline")).lower()
+                if state not in {"online", "degraded", "offline"}:
+                    state = "offline"
+                rows.append({
+                    "name": str(row.get("name", "?"))[:14],
+                    "state": state,
+                    "detail": str(row.get("detail", "") or "")[:14],
+                })
+            widget.set_subsystems(rows)
+
+        reactor = getattr(self, "_reactor", None)
+        if reactor is not None:
+            online = sum(
+                1 for row in subsystems
+                if str(row.get("state", "")).lower() == "online"
+            )
+            reactor.set_online(online, len(subsystems))
+
+    def _open_capability_matrix(self, subsystem: str = "") -> None:
+        """Open the full capability surface, optionally filtered to one group."""
+        if not HAVE_HOLO or CapabilityInspector is None:
+            return
+        self._refresh_capability_matrix()
+
+        overlay = getattr(self, "_capability_overlay", None)
+        if overlay is None:
+            overlay = CapabilityInspector(parent=self.centralWidget())
+            self._capability_overlay = overlay
+
+        entries = list(getattr(self, "_capability_entries", []))
+        if subsystem:
+            wanted = subsystem.upper()
+            filtered = [
+                entry for entry in entries
+                if str(entry.get("subsystem", "")).upper() == wanted
+            ]
+            # Never open an empty panel: a name that does not match the
+            # registry's spelling should show everything rather than nothing.
+            if filtered:
+                entries = filtered
+        overlay.set_entries(entries)
+        self._centre_overlay(overlay)
+
+    def _start_boot_sequence(self) -> None:
+        """The startup self-test: real subsystems, real results."""
+        if not HAVE_HOLO or HoloBootOverlay is None:
+            return
+        subsystems, _entries = self._capability_rows()
+        status_map = {"online": "OK", "degraded": "WARN", "offline": "SKIP"}
+        lines: list[tuple[str, str]] = []
+        for row in subsystems:
+            name = str(row.get("name", "?"))[:16]
+            detail = str(row.get("detail", "") or "")[:18]
+            state = str(row.get("state", "offline")).lower()
+            label = f"{name:<16} {detail}".strip()
+            lines.append((label, status_map.get(state, "SKIP")))
+        if not lines:
+            lines = [("Neural core online", "OK")]
+        overlay = HoloBootOverlay(parent=self.centralWidget())
+        self._boot_overlay = overlay
+        self._centre_overlay(overlay)
+        overlay.start(lines)
+
     # ── Irreversible-action confirmation ─────────────────────────────────────
 
     def _show_confirm_banner(
@@ -7427,6 +7783,22 @@ class MainWindow(QMainWindow):
     def _apply_state(self, state: str):
         self.hud.state    = state
         self.hud.speaking = (state == "SPEAKING")
+        # Keep the reactor in step with the head. A second indicator that
+        # lagged behind the real state would be worse than none.
+        reactor = getattr(self, "_reactor", None)
+        if reactor is not None:
+            try:
+                reactor.set_state(state, self.hud._amp_disp)
+            except Exception:
+                pass
+
+    def eventFilter(self, obj, event):
+        """Keep the holographic frame glued to the canvas it decorates."""
+        if obj is getattr(self, "hud", None) and event.type() == event.Type.Resize:
+            frame = getattr(self, "_holo_frame", None)
+            if frame is not None:
+                frame.setGeometry(self.hud.rect())
+        return super().eventFilter(obj, event)
 
     def _check_config(self) -> bool:
         try:
